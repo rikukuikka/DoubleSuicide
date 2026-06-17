@@ -1,0 +1,37 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Käännä ROM",
+            "type": "shell",
+            "command": "sjasmplus ${file} --raw=${fileBasenameNoExtension}.rom",
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Aja OpenMSX",
+            "type": "shell",
+            "command": "& 'C:\\Program Files\\OpenMSX\\openmsx.exe' -cart ${fileBasenameNoExtension}.rom",
+            "group": "test",
+            "presentation": {
+                "reveal": "silent",
+                "panel": "shared"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Käännä ja aja",
+            "dependsOrder": "sequence",
+            "dependsOn": ["Käännä ROM", "Aja OpenMSX"],
+            "group": "build",
+            "problemMatcher": []
+        }
+    ]
+}

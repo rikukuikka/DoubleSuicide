@@ -1,0 +1,43 @@
+# file opened: main.asm
+ 1    0000              ; MSX-DOS function codes
+ 2    0000              _STROUT equ 09h
+ 3    0000              _CONOUT equ 02h
+ 4    0000              ; MSX-DOS entry point
+ 5    0000              BDOS equ 0005h
+ 6    0000
+ 7    0000              ; Our program
+ 8    0000                  org 0100h
+ 9    0100 11 1D 01         ld de, TXT_HELLO1
+10    0103 0E 09            ld c, _STROUT
+11    0105 CD 05 00         call BDOS
+12    0108 21 28 01         ld hl, TXT_HELLO2
+13    010B CD 0F 01         call PRINT
+14    010E C9               ret
+15    010F
+16    010F              ; PRINT a zero-terminated string in MSX-DOS
+17    010F              ; INPUT: HL points to strat of string
+18    010F              PRINT:
+19    010F 7E              ld a, (hl)
+20    0110 A7              and a
+21    0111 C8              ret z
+22    0112                 ;
+23    0112 E5              push hl
+24    0113 5F              ld e, a
+25    0114 0E 02           ld c, _CONOUT
+26    0116 CD 05 00        call BDOS
+27    0119 E1              pop hl
+28    011A                 ;
+29    011A 23              inc hl
+30    011B 18 F2           jr PRINT
+31    011D
+32    011D 48 65 6C 6C  TXT_HELLO1 DB "Hello MSX!$"
+32    0121 6F 20 4D 53
+32    0125 58 21 24
+33    0128 0D 0A 44 65  TXT_HELLO2 DB "\r\nDebugging with Dezog",0
+33    012C 62 75 67 67
+33    0130 69 6E 67 20
+33    0134 77 69 74 68
+33    0138 20 44 65 7A
+33    013C 6F 67 00
+34    013F
+# file closed: main.asm
