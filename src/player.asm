@@ -32,7 +32,7 @@ INIT_PLAYERS:
     LD      HL, VRAM_SPRITE_ATT : CALL VDP_SETW
     LD      B, 32
 .hs:
-    LD      A, 0xD0 : OUT (VDP_DATA), A
+    LD      A, 0xD8 : OUT (VDP_DATA), A
     XOR     A : OUT (VDP_DATA), A : OUT (VDP_DATA), A : OUT (VDP_DATA), A
     DJNZ    .hs
 

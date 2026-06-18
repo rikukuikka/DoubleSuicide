@@ -1,6 +1,5 @@
 ; =============================================================================
 ; main.asm — Wizard of Wor MSX1
-; Kääntäminen: sjasmplus --raw=build/wow.rom src/main.asm
 ; =============================================================================
 
     ORG     0x4000
@@ -16,10 +15,9 @@ ROM_HEADER:
     INCLUDE "src/maze.asm"
     INCLUDE "src/input.asm"
     INCLUDE "src/player.asm"
+    INCLUDE "src/enemy.asm"
+    INCLUDE "src/bullet.asm"
 
-; =============================================================================
-; INIT
-; =============================================================================
 INIT:
     DI
     LD      SP, 0xF380
@@ -33,16 +31,19 @@ INIT:
 
     CALL    INIT_MAZE
     CALL    INIT_PLAYERS
+    CALL    INIT_ENEMIES
+    CALL    INIT_BULLETS
 
     EI
 
-; =============================================================================
-; MAINLOOP
-; =============================================================================
 MAINLOOP:
     HALT
     CALL    READ_INPUTS
     CALL    UPDATE_PLAYERS
+    CALL    UPDATE_ENEMIES
+    CALL    UPDATE_BULLETS
+    CALL    DRAW_ENEMIES
+    CALL    DRAW_BULLETS
     JP      MAINLOOP
 
     DS      0x8000 - $, 0xFF
