@@ -10,7 +10,7 @@
 
 READ_INPUTS:
     ; --- P1: joystick port 1 ---
-    LD      A, 15 : OUT (PSG_REG), A : IN A, (PSG_READ) : AND PSG_P1 : OUT (PSG_REG15), A 
+    LD      A, 15 : OUT (PSG_REG), A : IN A, (PSG_READ) : AND PSG_P1 : OUT (PSG_REG15), A
     LD      A, 14 : OUT (PSG_REG), A : IN A, (PSG_READ) : CPL : LD B, A
 
     ; --- P1: näppäimistö rivi 8 ---
@@ -28,7 +28,7 @@ READ_INPUTS:
     LD      A, B : LD (P1_INPUT), A
 
     ; --- P2: joystick port 2 ---
-    LD      A, 15 : OUT (PSG_REG), A : IN A, (PSG_READ) : OR (PSG_P2) : OUT (PSG_REG15), A 
+    LD      A, 15 : OUT (PSG_REG), A : IN A, (PSG_READ) : OR PSG_P2 : OUT (PSG_REG15), A
     LD      A, 14 : OUT (PSG_REG), A : IN A, (PSG_READ) : CPL : LD B, A
     LD      A, B : LD (P2_INPUT), A
     RET

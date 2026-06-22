@@ -62,7 +62,7 @@ TRY_FIRE:
     LD      A, L : ADD A, BULLET_SIZE : LD L, A
     LD      A, H : ADC A, 0 : LD H, A
 .got_addr:
-    ; Aktiivinen jo? Jos kyllä, ei ampua
+    ; Aktiivinen jo? Jos kyllä, ei ampua (ääni tulee vain uudelle ammukselle)
     LD      A, B : ADD A, 4 : LD C, A   ; offset 4 = aktiivinen
     PUSH    HL
     LD      A, L : ADD A, 4 : LD L, A
@@ -91,6 +91,7 @@ TRY_FIRE:
     LD      A, B : LD (HL), A          ; omistaja
     INC     HL
     LD      A, 1 : LD (HL), A          ; aktiivinen = 1
+    CALL    SFX_SHOOT
     RET
 
 ; =============================================================================
@@ -206,6 +207,7 @@ CHECK_BULLET_HIT:
     LD      A, H : ADC A, 0 : LD H, A
     XOR     A : LD (HL), A
     POP     HL
+    CALL    SFX_ENEMY_DIE
 
     ; Deaktivoi ammus
     POP     HL : POP     BC
@@ -265,7 +267,7 @@ DRAW_BULLETS:
     LD      A, BULLET_COLOR : OUT (VDP_DATA), A
     JR      .p2_bullet
 .hide_p1:
-    LD      A, 0xD0 : OUT (VDP_DATA), A   ; Y=0xD0 piilottaa
+    LD      A, 0xD8 : OUT (VDP_DATA), A   ; Y=0xD8 piilottaa (ei stop-merkki)
     XOR     A : OUT (VDP_DATA), A : OUT (VDP_DATA), A : OUT (VDP_DATA), A
 
     ; P2 ammus = sprite 9
@@ -284,6 +286,6 @@ DRAW_BULLETS:
     LD      A, BULLET_COLOR : OUT (VDP_DATA), A
     RET
 .hide_p2:
-    LD      A, 0xD0 : OUT (VDP_DATA), A   ; Y=0xD0 piilottaa
+    LD      A, 0xD8 : OUT (VDP_DATA), A   ; Y=0xD8 piilottaa (ei stop-merkki)
     XOR     A : OUT (VDP_DATA), A : OUT (VDP_DATA), A : OUT (VDP_DATA), A
     RET

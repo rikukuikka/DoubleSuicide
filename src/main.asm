@@ -17,6 +17,7 @@ ROM_HEADER:
     INCLUDE "src/player.asm"
     INCLUDE "src/enemy.asm"
     INCLUDE "src/bullet.asm"
+    INCLUDE "src/sound.asm"
 
 INIT:
     DI
@@ -33,17 +34,30 @@ INIT:
     CALL    INIT_PLAYERS
     CALL    INIT_ENEMIES
     CALL    INIT_BULLETS
+    CALL    INIT_SOUND
 
-    EI
+    ; Pysytään DI-tilassa: C-BIOS:in V-blank-keskeytys ei aja eikä
+    ; sotke PSG:tä. Frame-synkka tehdään pollaamalla VDP:n status-rekisteriä.
 
 MAINLOOP:
-    HALT
+    CALL    WAIT_VBLANK
     CALL    READ_INPUTS
     CALL    UPDATE_PLAYERS
     CALL    UPDATE_ENEMIES
     CALL    UPDATE_BULLETS
+    CALL    UPDATE_SOUND
     CALL    DRAW_ENEMIES
     CALL    DRAW_BULLETS
     JP      MAINLOOP
+
+; =============================================================================
+; WAIT_VBLANK — odota V-blank pollaamalla VDP status S#0 bittiä 7
+; Luku portista 0x99 palauttaa status-rekisterin; bitin lukeminen nollaa sen.
+; =============================================================================
+WAIT_VBLANK:
+    IN      A, (VDP_REG)     ; 0x99 luku = status S#0
+    AND     0x80             ; bitti 7 = V-blank (F) lippu
+    JR      Z, WAIT_VBLANK
+    RET
 
     DS      0x8000 - $, 0xFF

@@ -61,3 +61,8 @@ P2_INPUT    EQU 0xC007
 
 ; Vapaat RAM-osoitteet tulevaa käyttöä varten (viholliset jne.)
 ; 0xC010 - 0xC0FF
+
+; Porttirivien Y-koordinaatit — laskettu kenttädatasta
+; Rivit 10-13 ovat auki: Y = 80-111
+PORTAL_Y_MIN    EQU 80
+PORTAL_Y_MAX    EQU 111
