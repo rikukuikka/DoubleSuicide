@@ -59,8 +59,14 @@ P2_DIR      EQU 0xC005
 P1_INPUT    EQU 0xC006
 P2_INPUT    EQU 0xC007
 
-; Vapaat RAM-osoitteet tulevaa käyttöä varten (viholliset jne.)
-; 0xC010 - 0xC0FF
+; Pelaajien tila
+P1_LIVES    EQU 0xC008
+P2_LIVES    EQU 0xC009
+P1_DEAD_TMR EQU 0xC00A      ; kuolinanimaation ajastin (0=elossa)
+P2_DEAD_TMR EQU 0xC00B
+
+; Vapaat RAM-osoitteet
+; 0xC00C - 0xC00F vapaa
 
 ; Porttirivien Y-koordinaatit — laskettu kenttädatasta
 ; Rivit 10-13 ovat auki: Y = 80-111

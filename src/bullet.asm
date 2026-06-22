@@ -209,14 +209,27 @@ CHECK_BULLET_HIT:
     POP     HL
     CALL    SFX_ENEMY_DIE
 
-    ; Deaktivoi ammus
+    ; Deaktivoi ammus ja lisää pisteet
     POP     HL : POP     BC
-    POP     HL              ; alkuperäinen ammuksen osoite
+    POP     HL              ; HL = ammuksen osoite
+    ; Lue omistaja (offset 3)
     PUSH    HL
+    INC     HL : INC HL : INC HL
+    LD      B, (HL)         ; B = omistaja (0=P1, 1=P2)
+    POP     HL
+    ; Deaktivoi ammus (offset 4 = 0)
+    PUSH    HL : PUSH BC
     LD      A, L : ADD A, 4 : LD L, A
     LD      A, H : ADC A, 0 : LD H, A
     XOR     A : LD (HL), A
-    POP     HL
+    POP     BC : POP HL
+    ; Pisteet omistajan mukaan
+    LD      A, B : OR A
+    JR      NZ, .sc_p2
+    CALL    ADD_SCORE_P1
+    RET
+.sc_p2:
+    CALL    ADD_SCORE_P2
     RET
 
 .enext:

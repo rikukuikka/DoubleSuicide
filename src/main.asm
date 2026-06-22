@@ -18,6 +18,7 @@ ROM_HEADER:
     INCLUDE "src/enemy.asm"
     INCLUDE "src/bullet.asm"
     INCLUDE "src/sound.asm"
+    INCLUDE "src/hud.asm"
 
 INIT:
     DI
@@ -35,6 +36,7 @@ INIT:
     CALL    INIT_ENEMIES
     CALL    INIT_BULLETS
     CALL    INIT_SOUND
+    CALL    INIT_HUD
 
     ; Pysytään DI-tilassa: C-BIOS:in V-blank-keskeytys ei aja eikä
     ; sotke PSG:tä. Frame-synkka tehdään pollaamalla VDP:n status-rekisteriä.
@@ -44,10 +46,12 @@ MAINLOOP:
     CALL    READ_INPUTS
     CALL    UPDATE_PLAYERS
     CALL    UPDATE_ENEMIES
+    CALL    CHECK_PLAYER_DEATH
     CALL    UPDATE_BULLETS
     CALL    UPDATE_SOUND
     CALL    DRAW_ENEMIES
     CALL    DRAW_BULLETS
+    CALL    DRAW_HUD
     JP      MAINLOOP
 
 ; =============================================================================

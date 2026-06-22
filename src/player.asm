@@ -19,6 +19,10 @@ INIT_PLAYERS:
     LD      A, 174       : LD (P2_X), A
     LD      A, 88        : LD (P2_Y), A
     LD      A, DIR_LEFT  : LD (P2_DIR), A
+    LD      A, 3         : LD (P1_LIVES), A
+    LD      A, 3         : LD (P2_LIVES), A
+    XOR     A            : LD (P1_DEAD_TMR), A
+                           LD (P2_DEAD_TMR), A
 
     ; Sprite patternit VRAM:iin
     LD      HL, VRAM_SPRITE_PAT : CALL VDP_SETW
@@ -117,6 +121,42 @@ IN_PORTAL:
 ; UPDATE_PLAYERS — liikuta molemmat pelaajat inputin mukaan
 UPDATE_PLAYERS:
     ; --- P1 ---
+    ; Jos kuolinajastin > 0, vilkuta ja odota
+    LD      A, (P1_DEAD_TMR)
+    OR      A
+    JR      Z, .p1_alive
+    DEC     A : LD (P1_DEAD_TMR), A
+    ; Vilkuta: piilota joka toinen frame
+    AND     0x02
+    JR      Z, .p1_flash_hide
+    CALL    DRAW_P1
+    JR      .p1_done_death
+.p1_flash_hide:
+    LD      HL, VRAM_SPRITE_ATT : CALL VDP_SETW
+    LD      A, 0xD8 : OUT (VDP_DATA), A
+    XOR     A : OUT (VDP_DATA), A : OUT (VDP_DATA), A : OUT (VDP_DATA), A
+.p1_done_death:
+    ; Jos ajastin juuri loppui (=0), respawnaa
+    LD      A, (P1_DEAD_TMR)
+    OR      A
+    JR      NZ, .p1_skip_move
+    LD      A, (P1_LIVES) : OR A : JR Z, .p1_skip_move  ; ei elämiä → pysyy piilossa
+    LD      A, 40        : LD (P1_X), A
+    LD      A, 88        : LD (P1_Y), A
+    LD      A, DIR_RIGHT : LD (P1_DIR), A
+    CALL    DRAW_P1
+.p1_skip_move:
+    XOR     A : LD (P1_INPUT), A
+    JP      .p1_after_move
+.p1_alive:
+    ; Jos elämät = 0, piilota ja ohita
+    LD      A, (P1_LIVES) : OR A : JR NZ, .p1_has_lives
+    LD      HL, VRAM_SPRITE_ATT : CALL VDP_SETW
+    LD      A, 0xD8 : OUT (VDP_DATA), A
+    XOR     A : OUT (VDP_DATA), A : OUT (VDP_DATA), A : OUT (VDP_DATA), A
+    XOR     A : LD (P1_INPUT), A     ; estä ampuminen
+    JP      .p1_after_move
+.p1_has_lives:
     LD      A, (P1_INPUT) : AND IN_UP : JR Z, .p1nu
     LD      A, (P1_Y) : SUB SPEED : CP 8 : JR C, .p1nu : LD E, A
     ; Snap X ruuturajaan
@@ -166,8 +206,41 @@ UPDATE_PLAYERS:
     LD      A, DIR_RIGHT : LD (P1_DIR), A
 .p1nr:
     CALL    DRAW_P1
+.p1_after_move:
 
     ; --- P2 ---
+    LD      A, (P2_DEAD_TMR)
+    OR      A
+    JR      Z, .p2_alive
+    DEC     A : LD (P2_DEAD_TMR), A
+    AND     0x02
+    JR      Z, .p2_flash_hide
+    CALL    DRAW_P2
+    JR      .p2_done_death
+.p2_flash_hide:
+    LD      HL, VRAM_SPRITE_ATT + 4 : CALL VDP_SETW
+    LD      A, 0xD8 : OUT (VDP_DATA), A
+    XOR     A : OUT (VDP_DATA), A : OUT (VDP_DATA), A : OUT (VDP_DATA), A
+.p2_done_death:
+    LD      A, (P2_DEAD_TMR)
+    OR      A
+    JR      NZ, .p2_skip_move
+    LD      A, (P2_LIVES) : OR A : JR Z, .p2_skip_move
+    LD      A, 174       : LD (P2_X), A
+    LD      A, 88        : LD (P2_Y), A
+    LD      A, DIR_LEFT  : LD (P2_DIR), A
+    CALL    DRAW_P2
+.p2_skip_move:
+    XOR     A : LD (P2_INPUT), A
+    JP      .p2_after_move
+.p2_alive:
+    LD      A, (P2_LIVES) : OR A : JR NZ, .p2_has_lives
+    LD      HL, VRAM_SPRITE_ATT + 4 : CALL VDP_SETW
+    LD      A, 0xD8 : OUT (VDP_DATA), A
+    XOR     A : OUT (VDP_DATA), A : OUT (VDP_DATA), A : OUT (VDP_DATA), A
+    XOR     A : LD (P2_INPUT), A
+    JP      .p2_after_move
+.p2_has_lives:
     LD      A, (P2_INPUT) : AND IN_UP : JR Z, .p2nu
     LD      A, (P2_Y) : SUB SPEED : CP 8 : JR C, .p2nu : LD E, A
     LD      A, (P2_X) : CALL SNAP_TO_GRID_X : LD D, A
@@ -213,4 +286,59 @@ UPDATE_PLAYERS:
     LD      A, DIR_RIGHT : LD (P2_DIR), A
 .p2nr:
     CALL    DRAW_P2
+.p2_after_move:
+    RET
+
+; =============================================================================
+; CHECK_PLAYER_DEATH — tarkista osuuko vihollinen pelaajaan
+; =============================================================================
+CHECK_PLAYER_DEATH:
+    LD      IX, ENEMIES
+    LD      B, MAX_ENEMIES
+.loop:
+    PUSH    BC
+    LD      A, (IX+4) : OR A : JR Z, .next    ; aktiivinen?
+
+    ; Tarkista P1 (jos elossa ja ei kuolinajastimessa)
+    LD      A, (P1_DEAD_TMR) : OR A : JR NZ, .skip_p1
+    LD      A, (P1_LIVES) : OR A : JR Z, .skip_p1
+    ; Etäisyys X
+    LD      A, (P1_X) : SUB (IX+0)
+    JP      P, .p1xp
+    NEG
+.p1xp: CP      7 : JR NC, .skip_p1
+    ; Etäisyys Y
+    LD      A, (P1_Y) : SUB (IX+1)
+    JP      P, .p1yp
+    NEG
+.p1yp: CP      7 : JR NC, .skip_p1
+    ; OSUMA P1
+    LD      A, (P1_LIVES) : DEC A : LD (P1_LIVES), A
+    LD      A, 60 : LD (P1_DEAD_TMR), A    ; 1 sekunti vilkkumista
+    CALL    SFX_ENEMY_DIE
+    JR      .next
+
+.skip_p1:
+    ; Tarkista P2
+    LD      A, (P2_DEAD_TMR) : OR A : JR NZ, .next
+    LD      A, (P2_LIVES) : OR A : JR Z, .next
+    LD      A, (P2_X) : SUB (IX+0)
+    JP      P, .p2xp
+    NEG
+.p2xp: CP      7 : JR NC, .next
+    LD      A, (P2_Y) : SUB (IX+1)
+    JP      P, .p2yp
+    NEG
+.p2yp: CP      7 : JR NC, .next
+    ; OSUMA P2
+    LD      A, (P2_LIVES) : DEC A : LD (P2_LIVES), A
+    LD      A, 60 : LD (P2_DEAD_TMR), A
+    CALL    SFX_ENEMY_DIE
+
+.next:
+    LD      BC, ENEMY_SIZE
+    ADD     IX, BC
+    POP     BC
+    DEC     B
+    JP      NZ, .loop
     RET
