@@ -19,8 +19,15 @@ BULLETS         EQU 0xC050      ; 2*8=16 tavua RAM:issa
 
 ; Ammussprite patternit (pattern 8 ja 9)
 BULLET_PATS:
-    DB 0x00,0x00,0x18,0x3C,0x3C,0x18,0x00,0x00  ; vaaka-ammus (pat 8)
-    DB 0x00,0x08,0x1C,0x3E,0x3E,0x1C,0x08,0x00  ; pysty-ammus (pat 9)
+    ; 16x16 ammus (pattern 12 = offset 96), pieni piste keskellä
+    ; Vasen puoli ylä (rivit 0-7)
+    DB 0x00,0x00,0x00,0x00,0x00,0x00,0x03,0x07
+    ; Vasen puoli ala (rivit 8-15)
+    DB 0x07,0x03,0x00,0x00,0x00,0x00,0x00,0x00
+    ; Oikea puoli ylä (rivit 0-7)
+    DB 0x00,0x00,0x00,0x00,0x00,0x00,0xC0,0xE0
+    ; Oikea puoli ala (rivit 8-15)
+    DB 0xE0,0xC0,0x00,0x00,0x00,0x00,0x00,0x00
 BULLET_PATS_END:
 
 ; =============================================================================
@@ -28,7 +35,7 @@ BULLET_PATS_END:
 ; =============================================================================
 INIT_BULLETS:
     ; Lataa sprite patternit (pattern 8 alkaen = offset 8*8=64)
-    LD      HL, VRAM_SPRITE_PAT + 64 : CALL VDP_SETW
+    LD      HL, VRAM_SPRITE_PAT + 96 : CALL VDP_SETW   ; 16x16: pelaaja 64 + enemy 32
     LD      HL, BULLET_PATS
     LD      BC, BULLET_PATS_END - BULLET_PATS
 .pp:LD      A, (HL) : OUT (VDP_DATA), A : INC HL
@@ -45,11 +52,8 @@ INIT_BULLETS:
 ; BULLET_PATTERN — suunta → pattern numero
 ; =============================================================================
 BULLET_PATTERN:
-    CP      DIR_LEFT  : JR Z, .horiz
-    CP      DIR_RIGHT : JR Z, .horiz
-    LD      A, 9 : RET      ; ylös/alas = pysty
-.horiz:
-    LD      A, 8 : RET      ; vasen/oikea = vaaka
+    ; 16x16 moodissa: yksi pattern kaikille suunnille
+    LD      A, 12 : RET
 
 ; =============================================================================
 ; TRY_FIRE — yritä ampua jos tulipainike pohjassa ja ammus ei aktiivinen
@@ -139,14 +143,14 @@ UPDATE_BULLET:
 .nl:; DIR_RIGHT
     LD      A, (HL)
     ADD     A, BULLET_SPEED
-    CP      249 : JR NC, .deactivate
+    CP      241 : JR NC, .deactivate
     LD      (HL), A
 
 .check_hit:
-    ; Tarkista törmäys seinään
-    LD      B, (HL)
+    ; Tarkista törmäys seinään — 16x16 spriten keskipiste (X+8, Y+8)
+    LD      A, (HL) : ADD A, 8 : LD B, A        ; B = X + 8
     PUSH    HL : INC HL : LD A, (HL) : POP HL
-    LD      C, A
+    ADD     A, 8 : LD C, A                       ; C = Y + 8
     CALL    IS_WALL
     JR      NZ, .deactivate
 
@@ -192,14 +196,14 @@ CHECK_BULLET_HIT:
     JP      P, .ex_pos
     NEG
 .ex_pos:
-    CP      8 : JR NC, .enext
+    CP      15 : JR NC, .enext
 
     PUSH    HL : INC HL : LD A, (HL) : POP HL
     SUB     E                 ; vihollinen Y - ammus Y
     JP      P, .ey_pos
     NEG
 .ey_pos:
-    CP      8 : JR NC, .enext
+    CP      15 : JR NC, .enext
 
     ; OSUMA — deaktivoi vihollinen
     PUSH    HL
@@ -267,15 +271,10 @@ DRAW_BULLETS:
     ; P1 ammus = sprite 8
     LD      HL, VRAM_SPRITE_ATT + 32 : CALL VDP_SETW
     LD      A, (0xC054) : OR A : JR Z, .hide_p1  ; aktiivinen?
-    LD      A, (0xC051) : OUT (VDP_DATA), A       ; Y
+    LD      A, (0xC051) : DEC A : OUT (VDP_DATA), A  ; Y, TMS9918A: Y-1
     LD      A, (0xC050) : OUT (VDP_DATA), A       ; X
     ; pattern: DIR_RIGHT/LEFT=8, muut=9
-    LD      A, (0xC052)                           ; suunta
-    CP      DIR_RIGHT : JR Z, .p1h
-    CP      DIR_LEFT  : JR Z, .p1h
-    LD      A, 9 : JR .p1pat
-.p1h: LD    A, 8
-.p1pat:
+    LD      A, 12                                 ; 16x16 ammus pattern
     OUT     (VDP_DATA), A
     LD      A, BULLET_COLOR : OUT (VDP_DATA), A
     JR      .p2_bullet
@@ -287,14 +286,9 @@ DRAW_BULLETS:
 .p2_bullet:
     LD      HL, VRAM_SPRITE_ATT + 36 : CALL VDP_SETW
     LD      A, (0xC05C) : OR A : JR Z, .hide_p2  ; aktiivinen? (BULLETS+BULLET_SIZE+4)
-    LD      A, (0xC059) : OUT (VDP_DATA), A       ; Y
+    LD      A, (0xC059) : DEC A : OUT (VDP_DATA), A  ; Y, TMS9918A: Y-1
     LD      A, (0xC058) : OUT (VDP_DATA), A       ; X
-    LD      A, (0xC05A)
-    CP      DIR_RIGHT : JR Z, .p2h
-    CP      DIR_LEFT  : JR Z, .p2h
-    LD      A, 9 : JR .p2pat
-.p2h: LD    A, 8
-.p2pat:
+    LD      A, 12                                 ; 16x16 ammus pattern
     OUT     (VDP_DATA), A
     LD      A, BULLET_COLOR : OUT (VDP_DATA), A
     RET

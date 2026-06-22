@@ -21,10 +21,15 @@ RAND_SEED       EQU 0xC040      ; 2 tavua
 WORRIT_COLOR    EQU 14          ; keltainen
 
 WORRIT_PATS:
-    DB 0x3C,0x7E,0xFF,0xDB,0xFF,0x66,0x42,0x00  ; oikealle (pat 4)
-    DB 0x3C,0x7E,0xFF,0xDB,0xFF,0x66,0x42,0x00  ; vasemmalle (pat 5)
-    DB 0x18,0xFF,0x7E,0x3C,0x3C,0x7E,0xFF,0x18  ; ylös/alas (pat 6)
-    DB 0x18,0xFF,0x7E,0x3C,0x3C,0x7E,0xFF,0x18  ; vara (pat 7)
+    ; 16x16 Worrit (pattern 8 = offset 64, yksi frame)
+    ; Vasen puoli ylä (rivit 0-7)
+    DB 0x03,0x0F,0x1F,0x3F,0x3B,0x3B,0x3F,0x3F
+    ; Vasen puoli ala (rivit 8-15)
+    DB 0x3F,0x3F,0x3F,0x3F,0x3B,0x2D,0x00,0x00
+    ; Oikea puoli ylä (rivit 0-7)
+    DB 0xC0,0xF0,0xF8,0xFC,0xDC,0xDC,0xFC,0xFC
+    ; Oikea puoli ala (rivit 8-15)
+    DB 0xFC,0xFC,0xFC,0xFC,0xDC,0xB4,0x00,0x00
 WORRIT_PATS_END:
 
 ; =============================================================================
@@ -56,7 +61,7 @@ INIT_ENEMIES:
     LD      HL, 0xACE1 : LD (RAND_SEED), HL
 
     ; Lataa sprite patternit (pattern 4 alkaen)
-    LD      HL, VRAM_SPRITE_PAT + 32 : CALL VDP_SETW
+    LD      HL, VRAM_SPRITE_PAT + 64 : CALL VDP_SETW   ; 16x16: pelaaja vie 64 tavua
     LD      HL, WORRIT_PATS
     LD      BC, WORRIT_PATS_END - WORRIT_PATS
 .pp:LD      A, (HL) : OUT (VDP_DATA), A : INC HL
@@ -99,10 +104,8 @@ SPAWN_WORRIT:
 ; WORRIT_PATTERN — suunta → sprite pattern numero
 ; =============================================================================
 WORRIT_PATTERN:
-    CP      DIR_LEFT  : JR Z, .lr
-    CP      DIR_RIGHT : JR Z, .lr
-    LD      A, 6 : RET          ; ylös/alas
-.lr:LD      A, 4 : RET          ; vasen/oikea
+    ; 16x16 moodissa: yksi pattern kaikille suunnille
+    LD      A, 8 : RET
 
 ; =============================================================================
 ; UPDATE_WORRIT — liikuta yksi Worrit (IX = data)
@@ -120,20 +123,20 @@ UPDATE_WORRIT:
     CP      DIR_DOWN : JR NZ, .not_down
     LD      A, (IX+1) : ADD A, SPEED : CP 176 : JR NC, .change
     LD      E, A
-    LD      B, (IX+0) : LD A, E : ADD A, 7 : LD C, A : CALL IS_WALL : JR NZ, .change
+    LD      B, (IX+0) : LD A, E : ADD A, 15 : LD C, A : CALL IS_WALL : JR NZ, .change
     LD      (IX+1), E : RET
 .not_down:
     CP      DIR_LEFT : JR NZ, .not_left
     LD      A, (IX+0) : SUB SPEED : JR C, .change
     LD      E, A
-    LD      B, E : LD A, (IX+1) : ADD A, 3 : LD C, A : CALL IS_WALL : JR NZ, .change
+    LD      B, E : LD A, (IX+1) : ADD A, 8 : LD C, A : CALL IS_WALL : JR NZ, .change
     LD      (IX+0), E : RET
 .not_left:
     ; DIR_RIGHT
-    LD      A, (IX+0) : ADD A, SPEED : CP 249 : JR NC, .change
+    LD      A, (IX+0) : ADD A, SPEED : CP 241 : JR NC, .change
     LD      E, A
-    LD      A, E : ADD A, 7 : LD B, A
-    LD      A, (IX+1) : ADD A, 3 : LD C, A : CALL IS_WALL : JR NZ, .change
+    LD      A, E : ADD A, 15 : LD B, A
+    LD      A, (IX+1) : ADD A, 8 : LD C, A : CALL IS_WALL : JR NZ, .change
     LD      (IX+0), E : RET
 
 .change:
@@ -149,15 +152,15 @@ UPDATE_WORRIT:
     JR      .tok
 .tu:CP      DIR_DOWN : JR NZ, .td
     LD      A, (IX+1) : ADD A, SPEED : CP 176 : JR NC, .tbad
-    LD      E, A : LD B, (IX+0) : LD A, E : ADD A, 7 : LD C, A : CALL IS_WALL : JR NZ, .tbad
+    LD      E, A : LD B, (IX+0) : LD A, E : ADD A, 15 : LD C, A : CALL IS_WALL : JR NZ, .tbad
     JR      .tok
 .td:CP      DIR_LEFT : JR NZ, .tl
     LD      A, (IX+0) : SUB SPEED : JR C, .tbad
     LD      E, A : LD B, E : LD A, (IX+1) : ADD A, 3 : LD C, A : CALL IS_WALL : JR NZ, .tbad
     JR      .tok
-.tl:LD      A, (IX+0) : ADD A, SPEED : CP 249 : JR NC, .tbad
-    LD      E, A : LD A, E : ADD A, 7 : LD B, A
-    LD      A, (IX+1) : ADD A, 3 : LD C, A : CALL IS_WALL : JR NZ, .tbad
+.tl:LD      A, (IX+0) : ADD A, SPEED : CP 241 : JR NC, .tbad
+    LD      E, A : LD A, E : ADD A, 15 : LD B, A
+    LD      A, (IX+1) : ADD A, 8 : LD C, A : CALL IS_WALL : JR NZ, .tbad
 .tok:
     LD      (IX+2), D
     POP     BC : RET

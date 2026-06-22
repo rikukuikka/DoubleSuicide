@@ -39,8 +39,8 @@ IN_FIRE     EQU 0x10
 SPEED       EQU 2
 
 ; Sprite värit
-P1_COLOR    EQU 7   ; syaani
-P2_COLOR    EQU 8   ; punainen
+P1_COLOR    EQU 2   ; vihreä
+P2_COLOR    EQU 13   ; violetti
 
 ; =============================================================================
 ; RAM-osoitteet 0xC000+
@@ -48,9 +48,13 @@ P2_COLOR    EQU 8   ; punainen
 ; =============================================================================
 
 ; Pelaajien koordinaatit ja suunnat
+P1_START_X  EQU 8
+P1_START_Y  EQU 168
 P1_X        EQU 0xC000
 P1_Y        EQU 0xC001
 P1_DIR      EQU 0xC002
+P2_START_X  EQU 232
+P2_START_Y  EQU 168
 P2_X        EQU 0xC003
 P2_Y        EQU 0xC004
 P2_DIR      EQU 0xC005
@@ -65,8 +69,10 @@ P2_LIVES    EQU 0xC009
 P1_DEAD_TMR EQU 0xC00A      ; kuolinanimaation ajastin (0=elossa)
 P2_DEAD_TMR EQU 0xC00B
 
+FRAME_CTR   EQU 0xC00C      ; frame-laskuri animaatioille
+
 ; Vapaat RAM-osoitteet
-; 0xC00C - 0xC00F vapaa
+; 0xC00D - 0xC00F vapaa
 
 ; Porttirivien Y-koordinaatit — laskettu kenttädatasta
 ; Rivit 10-13 ovat auki: Y = 80-111

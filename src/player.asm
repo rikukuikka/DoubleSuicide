@@ -4,25 +4,33 @@
 
 ; Sprite patternit (ROM:issa ok, ei muutu)
 SPR_PATS:
-    DB 0x18,0x3C,0x7E,0xFC,0xFC,0x7E,0x3C,0x18  ; 0=oikea
-    DB 0x18,0x3C,0x7E,0x3F,0x3F,0x7E,0x3C,0x18  ; 1=vasen
-    DB 0x18,0x3C,0x7E,0xFF,0x18,0x18,0x18,0x18  ; 2=ylös
-    DB 0x18,0x18,0x18,0x18,0xFF,0x7E,0x3C,0x18  ; 3=alas
+; --- Oikea 1
+    DB $1F,$3F,$3A,$1F,$0C,$1F,$3F,$5E
+    DB $5F,$7E,$1E,$1E,$1F,$31,$60,$C0
+    DB $00,$E0,$80,$00,$00,$00,$80,$C0
+    DB $FC,$00,$00,$00,$40,$C0,$80,$00
+; 
+; --- Oikea 2
+    DB $1F,$3F,$3A,$1F,$0C,$1F,$3F,$5F
+    DB $9F,$FF,$1E,$1E,$1E,$0C,$0C,$0F
+    DB $00,$E0,$80,$00,$00,$00,$80,$80
+    DB $80,$F8,$00,$00,$00,$00,$00,$00
+
 SPR_PATS_END:
 
 ; INIT_PLAYERS — alusta pelaajien RAM-data ja spritet
 INIT_PLAYERS:
     ; RAM-arvot
-    LD      A, 40        : LD (P1_X), A
-    LD      A, 88        : LD (P1_Y), A
-    LD      A, DIR_RIGHT : LD (P1_DIR), A
-    LD      A, 174       : LD (P2_X), A
-    LD      A, 88        : LD (P2_Y), A
-    LD      A, DIR_LEFT  : LD (P2_DIR), A
-    LD      A, 3         : LD (P1_LIVES), A
-    LD      A, 3         : LD (P2_LIVES), A
-    XOR     A            : LD (P1_DEAD_TMR), A
-                           LD (P2_DEAD_TMR), A
+    LD      A, P1_START_X : LD (P1_X), A
+    LD      A, P1_START_Y : LD (P1_Y), A
+    LD      A, DIR_RIGHT  : LD (P1_DIR), A
+    LD      A, P2_START_X : LD (P2_X), A
+    LD      A, P2_START_Y : LD (P2_Y), A
+    LD      A, DIR_LEFT   : LD (P2_DIR), A
+    LD      A, 3          : LD (P1_LIVES), A
+    LD      A, 3          : LD (P2_LIVES), A
+    XOR     A             : LD (P1_DEAD_TMR), A
+                            LD (P2_DEAD_TMR), A
 
     ; Sprite patternit VRAM:iin
     LD      HL, VRAM_SPRITE_PAT : CALL VDP_SETW
@@ -47,18 +55,33 @@ INIT_PLAYERS:
 ; DRAW_P1 — piirrä P1 sprite VRAM:iin
 DRAW_P1:
     LD      HL, VRAM_SPRITE_ATT : CALL VDP_SETW
-    LD      A, (P1_Y) : OUT (VDP_DATA), A
+    LD      A, (P1_Y) : DEC A : OUT (VDP_DATA), A   ; TMS9918A: Y-1
     LD      A, (P1_X) : OUT (VDP_DATA), A
-    LD      A, (P1_DIR) : OUT (VDP_DATA), A
+    ; Animaatio vain jos liikkuu
+    LD      A, (P1_INPUT) : AND 0x0F             ; suuntabitit
+    JR      Z, .p1_still
+    LD      A, (FRAME_CTR) : AND 0x08 : RRCA    ; 0 tai 4
+    JR      .p1_pat
+.p1_still:
+    XOR     A                                    ; pattern 0 = pysäytyskuva
+.p1_pat:
+    OUT     (VDP_DATA), A
     LD      A, P1_COLOR : OUT (VDP_DATA), A
     RET
 
 ; DRAW_P2 — piirrä P2 sprite VRAM:iin
 DRAW_P2:
     LD      HL, VRAM_SPRITE_ATT + 4 : CALL VDP_SETW
-    LD      A, (P2_Y) : OUT (VDP_DATA), A
+    LD      A, (P2_Y) : DEC A : OUT (VDP_DATA), A   ; TMS9918A: Y-1
     LD      A, (P2_X) : OUT (VDP_DATA), A
-    LD      A, (P2_DIR) : OUT (VDP_DATA), A
+    LD      A, (P2_INPUT) : AND 0x0F
+    JR      Z, .p2_still
+    LD      A, (FRAME_CTR) : AND 0x08 : RRCA
+    JR      .p2_pat
+.p2_still:
+    XOR     A
+.p2_pat:
+    OUT     (VDP_DATA), A
     LD      A, P2_COLOR : OUT (VDP_DATA), A
     RET
 
@@ -141,8 +164,8 @@ UPDATE_PLAYERS:
     OR      A
     JR      NZ, .p1_skip_move
     LD      A, (P1_LIVES) : OR A : JR Z, .p1_skip_move  ; ei elämiä → pysyy piilossa
-    LD      A, 40        : LD (P1_X), A
-    LD      A, 88        : LD (P1_Y), A
+    LD      A, P1_START_X : LD (P1_X), A
+    LD      A, P1_START_Y : LD (P1_Y), A
     LD      A, DIR_RIGHT : LD (P1_DIR), A
     CALL    DRAW_P1
 .p1_skip_move:
@@ -162,7 +185,7 @@ UPDATE_PLAYERS:
     ; Snap X ruuturajaan
     LD      A, (P1_X) : CALL SNAP_TO_GRID_X : LD D, A
     LD      B, D : LD C, E : CALL IS_WALL : JR NZ, .p1nu
-    LD      A, D : ADD A, 7 : LD B, A : LD C, E : CALL IS_WALL : JR NZ, .p1nu
+    LD      A, D : ADD A, 15 : LD B, A : LD C, E : CALL IS_WALL : JR NZ, .p1nu
     LD      A, E : LD (P1_Y), A : LD A, D : LD (P1_X), A
     LD      A, DIR_UP : LD (P1_DIR), A
 .p1nu:
@@ -170,8 +193,8 @@ UPDATE_PLAYERS:
     LD      A, (P1_Y) : ADD A, SPEED : CP 176 : JR NC, .p1nd : LD E, A
     ; Snap X ruuturajaan
     LD      A, (P1_X) : CALL SNAP_TO_GRID_X : LD D, A
-    LD      B, D : LD A, E : ADD A, 7 : LD C, A : CALL IS_WALL : JR NZ, .p1nd
-    LD      A, D : ADD A, 7 : LD B, A : LD A, E : ADD A, 7 : LD C, A : CALL IS_WALL : JR NZ, .p1nd
+    LD      B, D : LD A, E : ADD A, 15 : LD C, A : CALL IS_WALL : JR NZ, .p1nd
+    LD      A, D : ADD A, 15 : LD B, A : LD A, E : ADD A, 15 : LD C, A : CALL IS_WALL : JR NZ, .p1nd
     LD      A, E : LD (P1_Y), A : LD A, D : LD (P1_X), A
     LD      A, DIR_DOWN : LD (P1_DIR), A
 .p1nd:
@@ -185,8 +208,8 @@ UPDATE_PLAYERS:
 .p1l_noport:
     LD      A, (P1_X) : SUB SPEED : JR C, .p1nl : LD E, A
     LD      A, (P1_Y) : CALL SNAP_TO_GRID_Y : LD D, A
-    LD      B, E : LD A, D : ADD A, 1 : LD C, A : CALL IS_WALL : JR NZ, .p1nl
-    LD      B, E : LD A, D : ADD A, 6 : LD C, A : CALL IS_WALL : JR NZ, .p1nl
+    LD      B, E : LD C, D : CALL IS_WALL : JR NZ, .p1nl
+    LD      B, E : LD A, D : ADD A, 15 : LD C, A : CALL IS_WALL : JR NZ, .p1nl
     LD      A, E : LD (P1_X), A : LD A, D : LD (P1_Y), A
     LD      A, DIR_LEFT : LD (P1_DIR), A
 .p1nl:
@@ -198,10 +221,10 @@ UPDATE_PLAYERS:
     LD      A, DIR_RIGHT : LD (P1_DIR), A
     JR      .p1nr
 .p1r_noport:
-    LD      A, (P1_X) : ADD A, SPEED : CP 249 : JR NC, .p1nr : LD E, A
+    LD      A, (P1_X) : ADD A, SPEED : CP 241 : JR NC, .p1nr : LD E, A
     LD      A, (P1_Y) : CALL SNAP_TO_GRID_Y : LD D, A
-    LD      A, E : ADD A, 7 : LD B, A : LD A, D : ADD A, 1 : LD C, A : CALL IS_WALL : JR NZ, .p1nr
-    LD      A, E : ADD A, 7 : LD B, A : LD A, D : ADD A, 6 : LD C, A : CALL IS_WALL : JR NZ, .p1nr
+    LD      A, E : ADD A, 15 : LD B, A : LD C, D : CALL IS_WALL : JR NZ, .p1nr
+    LD      A, E : ADD A, 15 : LD B, A : LD A, D : ADD A, 15 : LD C, A : CALL IS_WALL : JR NZ, .p1nr
     LD      A, E : LD (P1_X), A : LD A, D : LD (P1_Y), A
     LD      A, DIR_RIGHT : LD (P1_DIR), A
 .p1nr:
@@ -226,8 +249,8 @@ UPDATE_PLAYERS:
     OR      A
     JR      NZ, .p2_skip_move
     LD      A, (P2_LIVES) : OR A : JR Z, .p2_skip_move
-    LD      A, 174       : LD (P2_X), A
-    LD      A, 88        : LD (P2_Y), A
+    LD      A, P2_START_X : LD (P2_X), A
+    LD      A, P2_START_Y : LD (P2_Y), A
     LD      A, DIR_LEFT  : LD (P2_DIR), A
     CALL    DRAW_P2
 .p2_skip_move:
@@ -245,15 +268,15 @@ UPDATE_PLAYERS:
     LD      A, (P2_Y) : SUB SPEED : CP 8 : JR C, .p2nu : LD E, A
     LD      A, (P2_X) : CALL SNAP_TO_GRID_X : LD D, A
     LD      B, D : LD C, E : CALL IS_WALL : JR NZ, .p2nu
-    LD      A, D : ADD A, 7 : LD B, A : LD C, E : CALL IS_WALL : JR NZ, .p2nu
+    LD      A, D : ADD A, 15 : LD B, A : LD C, E : CALL IS_WALL : JR NZ, .p2nu
     LD      A, E : LD (P2_Y), A : LD A, D : LD (P2_X), A
     LD      A, DIR_UP : LD (P2_DIR), A
 .p2nu:
     LD      A, (P2_INPUT) : AND IN_DOWN : JR Z, .p2nd
     LD      A, (P2_Y) : ADD A, SPEED : CP 176 : JR NC, .p2nd : LD E, A
     LD      A, (P2_X) : CALL SNAP_TO_GRID_X : LD D, A
-    LD      B, D : LD A, E : ADD A, 7 : LD C, A : CALL IS_WALL : JR NZ, .p2nd
-    LD      A, D : ADD A, 7 : LD B, A : LD A, E : ADD A, 7 : LD C, A : CALL IS_WALL : JR NZ, .p2nd
+    LD      B, D : LD A, E : ADD A, 15 : LD C, A : CALL IS_WALL : JR NZ, .p2nd
+    LD      A, D : ADD A, 15 : LD B, A : LD A, E : ADD A, 15 : LD C, A : CALL IS_WALL : JR NZ, .p2nd
     LD      A, E : LD (P2_Y), A : LD A, D : LD (P2_X), A
     LD      A, DIR_DOWN : LD (P2_DIR), A
 .p2nd:
@@ -266,8 +289,8 @@ UPDATE_PLAYERS:
 .p2l_noport:
     LD      A, (P2_X) : SUB SPEED : JR C, .p2nl : LD E, A
     LD      A, (P2_Y) : CALL SNAP_TO_GRID_Y : LD D, A
-    LD      B, E : LD A, D : ADD A, 1 : LD C, A : CALL IS_WALL : JR NZ, .p2nl
-    LD      B, E : LD A, D : ADD A, 6 : LD C, A : CALL IS_WALL : JR NZ, .p2nl
+    LD      B, E : LD C, D : CALL IS_WALL : JR NZ, .p2nl
+    LD      B, E : LD A, D : ADD A, 15 : LD C, A : CALL IS_WALL : JR NZ, .p2nl
     LD      A, E : LD (P2_X), A : LD A, D : LD (P2_Y), A
     LD      A, DIR_LEFT : LD (P2_DIR), A
 .p2nl:
@@ -278,10 +301,10 @@ UPDATE_PLAYERS:
     LD      A, DIR_RIGHT : LD (P2_DIR), A
     JR      .p2nr
 .p2r_noport:
-    LD      A, (P2_X) : ADD A, SPEED : CP 249 : JR NC, .p2nr : LD E, A
+    LD      A, (P2_X) : ADD A, SPEED : CP 241 : JR NC, .p2nr : LD E, A
     LD      A, (P2_Y) : CALL SNAP_TO_GRID_Y : LD D, A
-    LD      A, E : ADD A, 7 : LD B, A : LD A, D : ADD A, 1 : LD C, A : CALL IS_WALL : JR NZ, .p2nr
-    LD      A, E : ADD A, 7 : LD B, A : LD A, D : ADD A, 6 : LD C, A : CALL IS_WALL : JR NZ, .p2nr
+    LD      A, E : ADD A, 15 : LD B, A : LD C, D : CALL IS_WALL : JR NZ, .p2nr
+    LD      A, E : ADD A, 15 : LD B, A : LD A, D : ADD A, 15 : LD C, A : CALL IS_WALL : JR NZ, .p2nr
     LD      A, E : LD (P2_X), A : LD A, D : LD (P2_Y), A
     LD      A, DIR_RIGHT : LD (P2_DIR), A
 .p2nr:
@@ -306,12 +329,12 @@ CHECK_PLAYER_DEATH:
     LD      A, (P1_X) : SUB (IX+0)
     JP      P, .p1xp
     NEG
-.p1xp: CP      7 : JR NC, .skip_p1
+.p1xp: CP      15 : JR NC, .skip_p1
     ; Etäisyys Y
     LD      A, (P1_Y) : SUB (IX+1)
     JP      P, .p1yp
     NEG
-.p1yp: CP      7 : JR NC, .skip_p1
+.p1yp: CP      15 : JR NC, .skip_p1
     ; OSUMA P1
     LD      A, (P1_LIVES) : DEC A : LD (P1_LIVES), A
     LD      A, 60 : LD (P1_DEAD_TMR), A    ; 1 sekunti vilkkumista
@@ -325,11 +348,11 @@ CHECK_PLAYER_DEATH:
     LD      A, (P2_X) : SUB (IX+0)
     JP      P, .p2xp
     NEG
-.p2xp: CP      7 : JR NC, .next
+.p2xp: CP      15 : JR NC, .next
     LD      A, (P2_Y) : SUB (IX+1)
     JP      P, .p2yp
     NEG
-.p2yp: CP      7 : JR NC, .next
+.p2yp: CP      15 : JR NC, .next
     ; OSUMA P2
     LD      A, (P2_LIVES) : DEC A : LD (P2_LIVES), A
     LD      A, 60 : LD (P2_DEAD_TMR), A
@@ -339,6 +362,5 @@ CHECK_PLAYER_DEATH:
     LD      BC, ENEMY_SIZE
     ADD     IX, BC
     POP     BC
-    DEC     B
     JP      NZ, .loop
     RET

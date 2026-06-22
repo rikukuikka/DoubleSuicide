@@ -20,7 +20,7 @@ VDP_FILL:
 ; VDP_INIT_SCREEN2 — alusta Screen 2 moodi
 VDP_INIT_SCREEN2:
     LD      A, 0x02 : OUT (VDP_REG), A : LD A, 0x80 : OUT (VDP_REG), A
-    LD      A, 0xE0 : OUT (VDP_REG), A : LD A, 0x81 : OUT (VDP_REG), A
+    LD      A, 0xE2 : OUT (VDP_REG), A : LD A, 0x81 : OUT (VDP_REG), A  ; 0xE2 = 16x16 sprites
     LD      A, 0x06 : OUT (VDP_REG), A : LD A, 0x82 : OUT (VDP_REG), A
     LD      A, 0xFF : OUT (VDP_REG), A : LD A, 0x83 : OUT (VDP_REG), A
     LD      A, 0x03 : OUT (VDP_REG), A : LD A, 0x84 : OUT (VDP_REG), A

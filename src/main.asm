@@ -36,6 +36,7 @@ INIT:
     CALL    INIT_ENEMIES
     CALL    INIT_BULLETS
     CALL    INIT_SOUND
+    XOR     A : LD (FRAME_CTR), A
     CALL    INIT_HUD
 
     ; Pysytään DI-tilassa: C-BIOS:in V-blank-keskeytys ei aja eikä
@@ -43,6 +44,7 @@ INIT:
 
 MAINLOOP:
     CALL    WAIT_VBLANK
+    LD      A, (FRAME_CTR) : INC A : LD (FRAME_CTR), A
     CALL    READ_INPUTS
     CALL    UPDATE_PLAYERS
     CALL    UPDATE_ENEMIES
