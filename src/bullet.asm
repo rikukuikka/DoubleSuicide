@@ -35,7 +35,7 @@ BULLET_PATS_END:
 ; =============================================================================
 INIT_BULLETS:
     ; Lataa sprite patternit (pattern 8 alkaen = offset 8*8=64)
-    LD      HL, VRAM_SPRITE_PAT + 96 : CALL VDP_SETW   ; 16x16: pelaaja 64 + enemy 32
+    LD      HL, VRAM_SPRITE_PAT + 288 : CALL VDP_SETW  ; 16x16: pelaaja 256 + enemy 32
     LD      HL, BULLET_PATS
     LD      BC, BULLET_PATS_END - BULLET_PATS
 .pp:LD      A, (HL) : OUT (VDP_DATA), A : INC HL
@@ -53,7 +53,7 @@ INIT_BULLETS:
 ; =============================================================================
 BULLET_PATTERN:
     ; 16x16 moodissa: yksi pattern kaikille suunnille
-    LD      A, 12 : RET
+    LD      A, 36 : RET    ; pattern 36 = offset 288
 
 ; =============================================================================
 ; TRY_FIRE — yritä ampua jos tulipainike pohjassa ja ammus ei aktiivinen
@@ -274,7 +274,7 @@ DRAW_BULLETS:
     LD      A, (0xC051) : DEC A : OUT (VDP_DATA), A  ; Y, TMS9918A: Y-1
     LD      A, (0xC050) : OUT (VDP_DATA), A       ; X
     ; pattern: DIR_RIGHT/LEFT=8, muut=9
-    LD      A, 12                                 ; 16x16 ammus pattern
+    LD      A, 36                                 ; 16x16 ammus pattern
     OUT     (VDP_DATA), A
     LD      A, BULLET_COLOR : OUT (VDP_DATA), A
     JR      .p2_bullet
@@ -288,7 +288,7 @@ DRAW_BULLETS:
     LD      A, (0xC05C) : OR A : JR Z, .hide_p2  ; aktiivinen? (BULLETS+BULLET_SIZE+4)
     LD      A, (0xC059) : DEC A : OUT (VDP_DATA), A  ; Y, TMS9918A: Y-1
     LD      A, (0xC058) : OUT (VDP_DATA), A       ; X
-    LD      A, 12                                 ; 16x16 ammus pattern
+    LD      A, 36                                 ; 16x16 ammus pattern
     OUT     (VDP_DATA), A
     LD      A, BULLET_COLOR : OUT (VDP_DATA), A
     RET

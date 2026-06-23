@@ -61,7 +61,7 @@ INIT_ENEMIES:
     LD      HL, 0xACE1 : LD (RAND_SEED), HL
 
     ; Lataa sprite patternit (pattern 4 alkaen)
-    LD      HL, VRAM_SPRITE_PAT + 64 : CALL VDP_SETW   ; 16x16: pelaaja vie 64 tavua
+    LD      HL, VRAM_SPRITE_PAT + 256 : CALL VDP_SETW  ; 16x16: pelaaja vie 256 tavua (4 suuntaa × 2 framea)
     LD      HL, WORRIT_PATS
     LD      BC, WORRIT_PATS_END - WORRIT_PATS
 .pp:LD      A, (HL) : OUT (VDP_DATA), A : INC HL
@@ -83,16 +83,30 @@ INIT_ENEMIES:
 
 ; SPAWN_WORRIT — luo Worrit IX-osoitteeseen satunnaiseen vapaaseen paikkaan
 SPAWN_WORRIT:
-    LD      B, 32
+    LD      B, 64               ; enemmän yrityksiä
 .try:
     PUSH    BC
-    CALL    RAND : AND 0x78 : ADD A, 16 : LD (IX+0), A   ; X 16-136
-    CALL    RAND : AND 0x38 : ADD A, 16 : LD (IX+1), A   ; Y 16-72
-    LD      B, (IX+0) : LD C, (IX+1) : CALL IS_WALL
+    ; 16px-kohdistettu satunnaispaikka
+    CALL    RAND : AND 0xF0 : LD (IX+0), A               ; X: 0-240, 16px askel
+    CALL    RAND : AND 0x70 : ADD A, 16 : LD (IX+1), A   ; Y: 16-128, 16px askel
+    ; Tarkista kaikki 4 kulmaa (16x16 alue)
+    LD      B, (IX+0) : LD C, (IX+1) : CALL IS_WALL                      ; vasen ylä
+    JR      NZ, .bad
+    LD      A, (IX+0) : ADD A, 15 : LD B, A : LD C, (IX+1) : CALL IS_WALL ; oikea ylä
+    JR      NZ, .bad
+    LD      B, (IX+0) : LD A, (IX+1) : ADD A, 15 : LD C, A : CALL IS_WALL ; vasen ala
+    JR      NZ, .bad
+    LD      A, (IX+0) : ADD A, 15 : LD B, A
+    LD      A, (IX+1) : ADD A, 15 : LD C, A : CALL IS_WALL                ; oikea ala
+    JR      NZ, .bad
+    ; Kaikki vapaat
     POP     BC
-    JR      Z, .found
+    JR      .found
+.bad:
+    POP     BC
     DJNZ    .try
-    LD      A, 80 : LD (IX+0), A    ; fallback
+    ; Fallback: tunnettu vapaa paikka
+    LD      A, 80 : LD (IX+0), A
     LD      A, 48 : LD (IX+1), A
 .found:
     CALL    RAND : AND 0x03 : LD (IX+2), A   ; satunnainen suunta
@@ -105,7 +119,7 @@ SPAWN_WORRIT:
 ; =============================================================================
 WORRIT_PATTERN:
     ; 16x16 moodissa: yksi pattern kaikille suunnille
-    LD      A, 8 : RET
+    LD      A, 32 : RET    ; pattern 32 = offset 256
 
 ; =============================================================================
 ; UPDATE_WORRIT — liikuta yksi Worrit (IX = data)
@@ -217,4 +231,49 @@ DRAW_ENEMIES:
     LD      BC, ENEMY_SIZE
     ADD     IX, BC
     POP     BC : DJNZ .loop
+    RET
+
+; =============================================================================
+; CHECK_WAVE_COMPLETE — tarkista onko kaikki viholliset kuolleet
+; Ulostulo: Z=1 jos kaikki kuolleet, Z=0 jos vielä elossa
+; =============================================================================
+CHECK_WAVE_COMPLETE:
+    LD      IX, ENEMIES
+    LD      B, MAX_ENEMIES
+.chk:
+    LD      A, (IX+4)
+    OR      A
+    RET     NZ              ; löytyi aktiivinen → Z=0, palaa heti
+    LD      DE, ENEMY_SIZE
+    ADD     IX, DE
+    DJNZ    .chk
+    XOR     A               ; kaikki kuolleet → Z=1
+    RET
+
+; =============================================================================
+; SPAWN_WAVE — luo uusi aalto vihollisia LEVEL:in mukaan
+; Level 1 = 3, Level 2 = 4, Level 3 = 5, Level 4+ = 6
+; =============================================================================
+SPAWN_WAVE:
+    ; Nollaa kaikki viholliset
+    LD      HL, ENEMIES
+    LD      B, MAX_ENEMIES * ENEMY_SIZE
+.clr:XOR    A : LD (HL), A : INC HL : DJNZ .clr
+
+    ; Laske montako: LEVEL + 2, max MAX_ENEMIES
+    LD      A, (LEVEL)
+    ADD     A, 2
+    CP      MAX_ENEMIES + 1
+    JR      C, .cnt_ok
+    LD      A, MAX_ENEMIES
+.cnt_ok:
+    LD      B, A            ; B = spawnaittavien määrä
+    LD      IX, ENEMIES
+.spawn_lp:
+    PUSH    BC
+    CALL    SPAWN_WORRIT
+    LD      DE, ENEMY_SIZE
+    ADD     IX, DE
+    POP     BC
+    DJNZ    .spawn_lp
     RET

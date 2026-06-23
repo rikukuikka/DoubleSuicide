@@ -4,19 +4,61 @@
 
 ; Sprite patternit (ROM:issa ok, ei muutu)
 SPR_PATS:
+
 ; --- Oikea 1
-    DB $1F,$3F,$3A,$1F,$0C,$1F,$3F,$5E
-    DB $5F,$7E,$1E,$1E,$1F,$31,$60,$C0
-    DB $00,$E0,$80,$00,$00,$00,$80,$C0
-    DB $FC,$00,$00,$00,$40,$C0,$80,$00
-; 
-; --- Oikea 2
     DB $1F,$3F,$3A,$1F,$0C,$1F,$3F,$5F
-    DB $9F,$FF,$1E,$1E,$1E,$0C,$0C,$0F
+    DB $9E,$FF,$1E,$1E,$1E,$0C,$0C,$0F
     DB $00,$E0,$80,$00,$00,$00,$80,$80
     DB $80,$F8,$00,$00,$00,$00,$00,$00
+; 
+; --- Oikea 2
+    DB $1F,$3F,$3A,$1F,$0C,$1F,$3F,$5E
+    DB $5F,$7E,$1E,$1E,$1F,$31,$60,$C0
+    DB $20,$C0,$80,$00,$00,$00,$80,$C0
+    DB $FC,$00,$00,$00,$40,$C0,$80,$00
+; 
+; --- Vasen 1
+    DB $00,$07,$01,$00,$00,$00,$01,$01
+    DB $01,$1F,$00,$00,$00,$00,$00,$00
+    DB $F8,$FC,$5C,$F8,$30,$F8,$FC,$FA
+    DB $79,$FF,$78,$78,$78,$30,$30,$F0
+; 
+; --- Vasen 2
+    DB $04,$03,$01,$00,$00,$00,$01,$03
+    DB $3F,$00,$00,$00,$02,$03,$01,$00
+    DB $F8,$FC,$5C,$F8,$30,$F8,$FC,$7A
+    DB $FA,$7E,$78,$78,$F8,$8C,$06,$03
+; 
+; --- Alas 1
+    DB $03,$02,$02,$1F,$FF,$FF,$9F,$82
+    DB $03,$02,$02,$02,$02,$00,$00,$00
+    DB $00,$80,$46,$EF,$FF,$FB,$EF,$EB
+    DB $C6,$02,$02,$00,$00,$00,$00,$00
+; 
+; --- Alas 2
+    DB $80,$C3,$62,$3F,$1F,$1F,$1F,$31
+    DB $61,$31,$01,$01,$01,$01,$00,$00
+    DB $00,$80,$46,$EF,$FF,$FB,$EF,$6B
+    DB $C6,$82,$01,$00,$00,$00,$00,$00
+; 
+; --- Ylös 1
+    DB $00,$00,$00,$00,$00,$40,$40,$63
+    DB $D7,$F7,$DF,$FF,$F7,$62,$01,$00
+    DB $00,$00,$00,$40,$40,$40,$40,$C0
+    DB $41,$F9,$FF,$FF,$F8,$40,$40,$C0
+; 
+; --- Ylös 2
+    DB $00,$00,$00,$00,$00,$80,$41,$63
+    DB $D6,$F7,$DF,$FF,$F7,$62,$01,$00
+    DB $00,$00,$80,$80,$80,$80,$8C,$86
+    DB $8C,$F8,$F8,$F8,$FC,$46,$C3,$01
 
 SPR_PATS_END:
+
+; Suunta → pattern base hakutaulu
+; DIR_RIGHT=0→0, DIR_LEFT=1→8, DIR_UP=2→24, DIR_DOWN=3→16
+DIR_PAT_BASE:
+    DB 0, 8, 24, 16
 
 ; INIT_PLAYERS — alusta pelaajien RAM-data ja spritet
 INIT_PLAYERS:
@@ -57,13 +99,18 @@ DRAW_P1:
     LD      HL, VRAM_SPRITE_ATT : CALL VDP_SETW
     LD      A, (P1_Y) : DEC A : OUT (VDP_DATA), A   ; TMS9918A: Y-1
     LD      A, (P1_X) : OUT (VDP_DATA), A
+    ; Suunta → base pattern (hakutaulu)
+    LD      A, (P1_DIR) : LD HL, DIR_PAT_BASE
+    ADD     A, L : LD L, A : LD A, H : ADC A, 0 : LD H, A
+    LD      B, (HL)                              ; B = suunnan base pattern
     ; Animaatio vain jos liikkuu
-    LD      A, (P1_INPUT) : AND 0x0F             ; suuntabitit
+    LD      A, (P1_INPUT) : AND 0x0F
     JR      Z, .p1_still
     LD      A, (FRAME_CTR) : AND 0x08 : RRCA    ; 0 tai 4
+    ADD     A, B                                 ; base + animaatio
     JR      .p1_pat
 .p1_still:
-    XOR     A                                    ; pattern 0 = pysäytyskuva
+    LD      A, B                                 ; base pattern (frame 1)
 .p1_pat:
     OUT     (VDP_DATA), A
     LD      A, P1_COLOR : OUT (VDP_DATA), A
@@ -74,12 +121,16 @@ DRAW_P2:
     LD      HL, VRAM_SPRITE_ATT + 4 : CALL VDP_SETW
     LD      A, (P2_Y) : DEC A : OUT (VDP_DATA), A   ; TMS9918A: Y-1
     LD      A, (P2_X) : OUT (VDP_DATA), A
+    LD      A, (P2_DIR) : LD HL, DIR_PAT_BASE
+    ADD     A, L : LD L, A : LD A, H : ADC A, 0 : LD H, A
+    LD      B, (HL)
     LD      A, (P2_INPUT) : AND 0x0F
     JR      Z, .p2_still
     LD      A, (FRAME_CTR) : AND 0x08 : RRCA
+    ADD     A, B
     JR      .p2_pat
 .p2_still:
-    XOR     A
+    LD      A, B
 .p2_pat:
     OUT     (VDP_DATA), A
     LD      A, P2_COLOR : OUT (VDP_DATA), A
@@ -152,6 +203,7 @@ UPDATE_PLAYERS:
     ; Vilkuta: piilota joka toinen frame
     AND     0x02
     JR      Z, .p1_flash_hide
+    XOR     A : LD (P1_INPUT), A   ; staattinen frame vilkkuessa
     CALL    DRAW_P1
     JR      .p1_done_death
 .p1_flash_hide:
@@ -215,7 +267,7 @@ UPDATE_PLAYERS:
 .p1nl:
     LD      A, (P1_INPUT) : AND IN_RIGHT : JR Z, .p1nr
     ; Porttitarkistus: jos porttikorkeudella ja X >= 240
-    LD      A, (P1_X) : CP 248 : JR C, .p1r_noport
+    LD      A, (P1_X) : CP 240 : JR C, .p1r_noport
     LD      A, (P1_Y) : CALL IN_PORTAL : JR NZ, .p1r_noport
     LD      A, 0 : LD (P1_X), A
     LD      A, DIR_RIGHT : LD (P1_DIR), A
@@ -238,6 +290,7 @@ UPDATE_PLAYERS:
     DEC     A : LD (P2_DEAD_TMR), A
     AND     0x02
     JR      Z, .p2_flash_hide
+    XOR     A : LD (P2_INPUT), A
     CALL    DRAW_P2
     JR      .p2_done_death
 .p2_flash_hide:
@@ -295,7 +348,7 @@ UPDATE_PLAYERS:
     LD      A, DIR_LEFT : LD (P2_DIR), A
 .p2nl:
     LD      A, (P2_INPUT) : AND IN_RIGHT : JR Z, .p2nr
-    LD      A, (P2_X) : CP 248 : JR C, .p2r_noport
+    LD      A, (P2_X) : CP 240 : JR C, .p2r_noport
     LD      A, (P2_Y) : CALL IN_PORTAL : JR NZ, .p2r_noport
     LD      A, 0 : LD (P2_X), A
     LD      A, DIR_RIGHT : LD (P2_DIR), A
@@ -362,5 +415,6 @@ CHECK_PLAYER_DEATH:
     LD      BC, ENEMY_SIZE
     ADD     IX, BC
     POP     BC
+    DEC     B
     JP      NZ, .loop
     RET

@@ -70,6 +70,8 @@ P1_DEAD_TMR EQU 0xC00A      ; kuolinanimaation ajastin (0=elossa)
 P2_DEAD_TMR EQU 0xC00B
 
 FRAME_CTR   EQU 0xC00C      ; frame-laskuri animaatioille
+LEVEL       EQU 0xC00D      ; kentän numero (1+)
+WAVE_TIMER  EQU 0xC00E      ; viive kenttien välillä
 
 ; Vapaat RAM-osoitteet
 ; 0xC00D - 0xC00F vapaa

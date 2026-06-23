@@ -37,6 +37,8 @@ INIT:
     CALL    INIT_BULLETS
     CALL    INIT_SOUND
     XOR     A : LD (FRAME_CTR), A
+    LD      A, 1 : LD (LEVEL), A
+    XOR     A : LD (WAVE_TIMER), A
     CALL    INIT_HUD
 
     ; Pysytään DI-tilassa: C-BIOS:in V-blank-keskeytys ei aja eikä
@@ -46,11 +48,41 @@ MAINLOOP:
     CALL    WAIT_VBLANK
     LD      A, (FRAME_CTR) : INC A : LD (FRAME_CTR), A
     CALL    READ_INPUTS
+
+    ; --- Wave timer ---
+    LD      A, (WAVE_TIMER)
+    OR      A
+    JR      Z, .normal
+
+    ; Viive käynnissä — laske alaspäin
+    DEC     A : LD (WAVE_TIMER), A
+    OR      A
+    JR      NZ, .wave_wait
+    ; Timer loppui → spawn uusi aalto
+    CALL    SPAWN_WAVE
+.wave_wait:
+    ; Pelaajat liikkuvat viiveen aikana, viholliset eivät
+    CALL    UPDATE_PLAYERS
+    CALL    UPDATE_BULLETS
+    CALL    UPDATE_SOUND
+    JR      .draw
+
+.normal:
+    ; Normaali pelitila
     CALL    UPDATE_PLAYERS
     CALL    UPDATE_ENEMIES
     CALL    CHECK_PLAYER_DEATH
     CALL    UPDATE_BULLETS
     CALL    UPDATE_SOUND
+
+    ; Tarkista onko aalto valmis
+    CALL    CHECK_WAVE_COMPLETE
+    JR      NZ, .draw
+    ; Kaikki viholliset tuhottu — seuraava taso
+    LD      A, (LEVEL) : INC A : LD (LEVEL), A
+    LD      A, 90 : LD (WAVE_TIMER), A    ; 1.5s viive
+
+.draw:
     CALL    DRAW_ENEMIES
     CALL    DRAW_BULLETS
     CALL    DRAW_HUD
