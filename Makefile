@@ -1,7 +1,7 @@
 ASM     = sjasmplus
 SRCDIR  = src
 OUTDIR  = build
-TARGET  = $(OUTDIR)/wow.rom
+TARGET  = $(OUTDIR)/DoubleSuicide.rom
 
 .PHONY: all run clean
 
