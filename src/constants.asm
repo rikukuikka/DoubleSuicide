@@ -40,7 +40,7 @@ SPEED       EQU 2
 
 ; Sprite värit
 P1_COLOR    EQU 2   ; vihreä
-P2_COLOR    EQU 13   ; violetti
+P2_COLOR    EQU 4   ; sininen
 
 ; =============================================================================
 ; RAM-osoitteet 0xC000+

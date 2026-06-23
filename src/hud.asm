@@ -28,8 +28,9 @@ DIGIT_PATS:
     DB 0x3C,0x66,0x66,0x3C,0x66,0x66,0x3C,0x00  ; 8
     DB 0x3C,0x66,0x66,0x3E,0x06,0x66,0x3C,0x00  ; 9
 ; Pelaaja-ikonit (tileet 12, 13) — täytetty neliö
-    DB 0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF  ; P1 ikoni
-    DB 0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF  ; P2 ikoni
+    DB $30,$78,$FF,$FC,$F4,$FE,$F8,$7C  ; P1 ikoni
+    DB $0C,$1E,$FF,$3F,$2F,$7F,$1F,$3E  ; P2 ikoni
+
 DIGIT_PATS_END:
 
 ; =============================================================================
@@ -70,9 +71,9 @@ INIT_HUD:
     LD      B, 8
     LD      A, 0x21
 .c2: OUT    (VDP_DATA), A : DJNZ .c2
-    ; P2 ikoni: 8 tavua violetti mustalla (0xD1)
+    ; P2 ikoni: 8 tavua sininen mustalla (0x41)
     LD      B, 8
-    LD      A, 0xD1
+    LD      A, 0x41
 .c3: OUT    (VDP_DATA), A : DJNZ .c3
     RET
 
@@ -87,13 +88,15 @@ DRAW_HUD:
     LD      B, 4
     LD      A, 1
 .ws1: OUT   (VDP_DATA), A : DJNZ .ws1
-    ; Tile 4: P1 ikoni (tilee 12)
-    LD      A, 12 : OUT (VDP_DATA), A
     ; Tile 5: P1 elämät
     LD      A, (P1_LIVES) : ADD A, 2 : OUT (VDP_DATA), A
     ; Tile 6: tyhjä
     XOR     A : OUT (VDP_DATA), A
-    ; Tile 7-10: P1 pisteet (4 BCD-numeroa)
+    ; Tile 4: P1 ikoni (tilee 12)
+    LD      A, 12 : OUT (VDP_DATA), A
+    ; Tile 6: tyhjä
+    XOR     A : OUT (VDP_DATA), A
+    ; Tile 4-7: P1 pisteet (4 BCD-numeroa)
     LD      A, (P1_SCORE_H)
     RRCA : RRCA : RRCA : RRCA : AND 0x0F : ADD A, 2 : OUT (VDP_DATA), A
     LD      A, (P1_SCORE_H)
@@ -103,15 +106,9 @@ DRAW_HUD:
     LD      A, (P1_SCORE_L)
     AND     0x0F : ADD A, 2 : OUT (VDP_DATA), A
     ; Tile 11-20: tyhjä (10 kpl)
-    LD      B, 10
+    LD      B, 8
     XOR     A
 .sp: OUT    (VDP_DATA), A : DJNZ .sp
-    ; Tile 21: P2 ikoni (tilee 13)
-    LD      A, 13 : OUT (VDP_DATA), A
-    ; Tile 22: P2 elämät
-    LD      A, (P2_LIVES) : ADD A, 2 : OUT (VDP_DATA), A
-    ; Tile 23: tyhjä
-    XOR     A : OUT (VDP_DATA), A
     ; Tile 24-27: P2 pisteet
     LD      A, (P2_SCORE_H)
     RRCA : RRCA : RRCA : RRCA : AND 0x0F : ADD A, 2 : OUT (VDP_DATA), A
@@ -121,6 +118,14 @@ DRAW_HUD:
     RRCA : RRCA : RRCA : RRCA : AND 0x0F : ADD A, 2 : OUT (VDP_DATA), A
     LD      A, (P2_SCORE_L)
     AND     0x0F : ADD A, 2 : OUT (VDP_DATA), A
+    ; Tile 6: tyhjä
+    XOR     A : OUT (VDP_DATA), A
+    ; Tile 21: P2 ikoni (tilee 13)
+    LD      A, 13 : OUT (VDP_DATA), A
+    ; Tile 6: tyhjä
+    XOR     A : OUT (VDP_DATA), A
+    ; Tile 22: P2 elämät
+    LD      A, (P2_LIVES) : ADD A, 2 : OUT (VDP_DATA), A
     ; Tile 28-31: seinä (4 kpl)
     LD      B, 4
     LD      A, 1
