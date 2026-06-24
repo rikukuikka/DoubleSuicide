@@ -19,6 +19,7 @@ ROM_HEADER:
     INCLUDE "src/bullet.asm"
     INCLUDE "src/sound.asm"
     INCLUDE "src/hud.asm"
+    INCLUDE "src/title.asm"
 
 INIT:
     DI
@@ -31,15 +32,19 @@ INIT:
     LD      A, 0
     CALL    VDP_FILL
 
+    CALL    INIT_HUD             ; lataa tilepatternit (kirjaimet, numerot)
+    CALL    INIT_SOUND           ; musiikki alkaa
+    XOR     A : LD (FRAME_CTR), A
+    CALL    TITLE_SCREEN         ; otsikkoruutu — odottaa valintaa
+
+    ; Pelin alustus valinnan jälkeen
     CALL    INIT_MAZE
     CALL    INIT_PLAYERS
     CALL    INIT_ENEMIES
     CALL    INIT_BULLETS
-    CALL    INIT_SOUND
-    XOR     A : LD (FRAME_CTR), A
     LD      A, 1 : LD (LEVEL), A
     XOR     A : LD (WAVE_TIMER), A
-    CALL    INIT_HUD
+    CALL    DRAW_HUD
 
     ; Pysytään DI-tilassa: C-BIOS:in V-blank-keskeytys ei aja eikä
     ; sotke PSG:tä. Frame-synkka tehdään pollaamalla VDP:n status-rekisteriä.

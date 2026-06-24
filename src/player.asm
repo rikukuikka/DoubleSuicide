@@ -70,7 +70,13 @@ INIT_PLAYERS:
     LD      A, P2_START_Y : LD (P2_Y), A
     LD      A, DIR_LEFT   : LD (P2_DIR), A
     LD      A, 3          : LD (P1_LIVES), A
-    LD      A, 3          : LD (P2_LIVES), A
+    ; P2 elämät: 3 kaksinpelissä, 0 yksinpelissä
+    LD      A, (GAME_MODE) : CP 2 : JR Z, .two_player
+    XOR     A : JR .set_p2_lives
+.two_player:
+    LD      A, 3
+.set_p2_lives:
+    LD      (P2_LIVES), A
     XOR     A             : LD (P1_DEAD_TMR), A
                             LD (P2_DEAD_TMR), A
 
