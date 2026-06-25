@@ -42,6 +42,7 @@ INIT:
     CALL    INIT_PLAYERS
     CALL    INIT_ENEMIES
     CALL    INIT_BULLETS
+    CALL    INIT_EXPLOSIONS
     LD      A, 1 : LD (LEVEL), A
     XOR     A : LD (WAVE_TIMER), A
     CALL    DRAW_HUD
@@ -69,6 +70,7 @@ MAINLOOP:
     ; Pelaajat liikkuvat viiveen aikana, viholliset eivät
     CALL    UPDATE_PLAYERS
     CALL    UPDATE_BULLETS
+    CALL    UPDATE_EXPLOSIONS
     CALL    UPDATE_SOUND
     JR      .draw
 
@@ -78,6 +80,7 @@ MAINLOOP:
     CALL    UPDATE_ENEMIES
     CALL    CHECK_PLAYER_DEATH
     CALL    UPDATE_BULLETS
+    CALL    UPDATE_EXPLOSIONS
     CALL    UPDATE_SOUND
 
     ; Tarkista onko aalto valmis
@@ -90,6 +93,7 @@ MAINLOOP:
 .draw:
     CALL    DRAW_ENEMIES
     CALL    DRAW_BULLETS
+    CALL    DRAW_EXPLOSIONS
     CALL    DRAW_HUD
     JP      MAINLOOP
 

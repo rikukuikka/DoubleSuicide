@@ -221,6 +221,10 @@ CHECK_BULLET_HIT:
     LD      A, H : ADC A, 0 : LD H, A
     XOR     A : LD (HL), A
     POP     HL
+    ; Käynnistä räjähdys vihollisen sijaintiin
+    LD      B, (HL)
+    PUSH    HL : INC HL : LD C, (HL) : POP HL
+    CALL    START_EXPLOSION
     CALL    SFX_ENEMY_DIE
 
     ; Deaktivoi ammus ja lisää pisteet
@@ -304,5 +308,102 @@ DRAW_BULLETS:
     RET
 .hide_p2:
     LD      A, 0xD8 : OUT (VDP_DATA), A   ; Y=0xD8 piilottaa (ei stop-merkki)
+    XOR     A : OUT (VDP_DATA), A : OUT (VDP_DATA), A : OUT (VDP_DATA), A
+    RET
+
+; =============================================================================
+; INIT_EXPLOSIONS — alusta räjähdykset
+; =============================================================================
+INIT_EXPLOSIONS:
+    LD      HL, EXPLOSIONS
+    LD      B, EXPL_SIZE * 2
+.clr:
+    XOR     A : LD (HL), A : INC HL : DJNZ .clr
+    RET
+
+; =============================================================================
+; START_EXPLOSION — käynnistä räjähdys
+; Sisääntulo: B=X, C=Y
+; =============================================================================
+START_EXPLOSION:
+    LD      HL, EXPLOSIONS + 2              ; slot 0 timer
+    LD      A, (HL) : OR A : JR Z, .slot0
+    LD      HL, EXPLOSIONS + EXPL_SIZE + 2  ; slot 1 timer
+    LD      A, (HL) : OR A : RET NZ         ; molemmat käytössä
+    DEC     HL : DEC     HL                 ; slot 1 base (X)
+    JR      .fill
+.slot0:
+    DEC     HL : DEC     HL                 ; slot 0 base (X)
+.fill:
+    LD      (HL), B                         ; X
+    INC     HL
+    LD      (HL), C                         ; Y
+    INC     HL
+    LD      A, EXPL_TIMER_MAX : LD (HL), A  ; Timer
+    RET
+
+; =============================================================================
+; UPDATE_EXPLOSIONS — laske räjähdysten ajastimet alas
+; =============================================================================
+UPDATE_EXPLOSIONS:
+    LD      HL, EXPLOSIONS + 2              ; slot 0 timer
+    LD      A, (HL) : OR A : JR Z, .e1
+    DEC     A : LD (HL), A
+.e1:
+    LD      HL, EXPLOSIONS + EXPL_SIZE + 2  ; slot 1 timer
+    LD      A, (HL) : OR A : RET Z
+    DEC     A : LD (HL), A
+    RET
+
+; =============================================================================
+; DRAW_EXPLOSIONS — piirrä räjähdykset (spritet 10 ja 11)
+; Timer 20-11 → Räjähdys 1 (kirkas), Timer 10-1 → Räjähdys 2 (haalistuva)
+; =============================================================================
+DRAW_EXPLOSIONS:
+    ; --- Räjähdys 0 → sprite 10 ---
+    LD      HL, EXPLOSIONS
+    LD      A, (HL) : LD B, A   ; B = X
+    INC     HL
+    LD      A, (HL) : LD C, A   ; C = Y
+    INC     HL
+    LD      A, (HL)             ; A = Timer
+    OR      A : JR Z, .hide0
+    LD      D, EXPL_PAT2 : LD E, EXPL_COLOR2
+    CP      11 : JR C, .show0
+    LD      D, EXPL_PAT1 : LD E, EXPL_COLOR1
+.show0:
+    LD      HL, VRAM_SPRITE_ATT + 40 : CALL VDP_SETW
+    LD      A, C : DEC A : OUT (VDP_DATA), A
+    LD      A, B : OUT (VDP_DATA), A
+    LD      A, D : OUT (VDP_DATA), A
+    LD      A, E : OUT (VDP_DATA), A
+    JR      .expl1
+.hide0:
+    LD      HL, VRAM_SPRITE_ATT + 40 : CALL VDP_SETW
+    LD      A, 0xD8 : OUT (VDP_DATA), A
+    XOR     A : OUT (VDP_DATA), A : OUT (VDP_DATA), A : OUT (VDP_DATA), A
+
+    ; --- Räjähdys 1 → sprite 11 ---
+.expl1:
+    LD      HL, EXPLOSIONS + EXPL_SIZE
+    LD      A, (HL) : LD B, A
+    INC     HL
+    LD      A, (HL) : LD C, A
+    INC     HL
+    LD      A, (HL)
+    OR      A : JR Z, .hide1
+    LD      D, EXPL_PAT2 : LD E, EXPL_COLOR2
+    CP      11 : JR C, .show1
+    LD      D, EXPL_PAT1 : LD E, EXPL_COLOR1
+.show1:
+    LD      HL, VRAM_SPRITE_ATT + 44 : CALL VDP_SETW
+    LD      A, C : DEC A : OUT (VDP_DATA), A
+    LD      A, B : OUT (VDP_DATA), A
+    LD      A, D : OUT (VDP_DATA), A
+    LD      A, E : OUT (VDP_DATA), A
+    RET
+.hide1:
+    LD      HL, VRAM_SPRITE_ATT + 44 : CALL VDP_SETW
+    LD      A, 0xD8 : OUT (VDP_DATA), A
     XOR     A : OUT (VDP_DATA), A : OUT (VDP_DATA), A : OUT (VDP_DATA), A
     RET

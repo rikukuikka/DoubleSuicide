@@ -10,8 +10,8 @@ VDP_SETW:
 
 ; VDP_FILL — täytä BC tavua arvolla A osoitteesta HL
 VDP_FILL:
-    CALL    VDP_SETW
     LD      D, A
+    CALL    VDP_SETW
 .lp:
     LD      A, D : OUT (VDP_DATA), A
     DEC     BC : LD A, B : OR C : JR NZ, .lp
