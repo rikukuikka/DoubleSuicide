@@ -82,6 +82,9 @@ WAVE_TIMER  EQU 0xC00F      ; viive kenttien välillä
 PORTAL_Y_MIN    EQU 80
 PORTAL_Y_MAX    EQU 111
 
+; HUD-likainen lippu
+HUD_DIRTY       EQU 0xC080      ; 1 = DRAW_HUD täytyy ajaa, 0 = ohita
+
 ; Räjähdykset
 EXPLOSIONS      EQU 0xC07A      ; 2*3=6 tavua RAM:issa (0xC060-0xC062 = SFX RAM)
 EXPL_SIZE       EQU 3

@@ -8,6 +8,13 @@ VDP_SETW:
     LD      A, H : OR 0x40 : OUT (VDP_REG), A
     RET
 
+; HIDE_SPRITE — piilota yksi sprite; HL = VRAM sprite attribute address
+HIDE_SPRITE:
+    CALL    VDP_SETW
+    LD      A, 0xD8 : OUT (VDP_DATA), A
+    XOR     A : OUT (VDP_DATA), A : OUT (VDP_DATA), A : OUT (VDP_DATA), A
+    RET
+
 ; VDP_FILL — täytä BC tavua arvolla A osoitteesta HL
 VDP_FILL:
     LD      D, A

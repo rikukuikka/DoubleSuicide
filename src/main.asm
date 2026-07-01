@@ -45,6 +45,7 @@ INIT:
     CALL    INIT_EXPLOSIONS
     LD      A, 1 : LD (LEVEL), A
     XOR     A : LD (WAVE_TIMER), A
+    LD      A, 1 : LD (HUD_DIRTY), A   ; DRAW_MAZE ylikirjoitti rivin 23
     CALL    DRAW_HUD
 
     ; Pysytään DI-tilassa: C-BIOS:in V-blank-keskeytys ei aja eikä

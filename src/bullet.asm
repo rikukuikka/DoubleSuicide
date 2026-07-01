@@ -47,9 +47,8 @@ INIT_BULLETS:
     ; Lataa sprite patternit (pattern 8 alkaen = offset 8*8=64)
     LD      HL, VRAM_SPRITE_PAT + 288 : CALL VDP_SETW  ; 16x16: pelaaja 256 + enemy 32
     LD      HL, BULLET_PATS
-    LD      BC, BULLET_PATS_END - BULLET_PATS
-.pp:LD      A, (HL) : OUT (VDP_DATA), A : INC HL
-    DEC     BC : LD A, B : OR C : JR NZ, .pp
+    LD      B, BULLET_PATS_END - BULLET_PATS
+.pp:LD      A, (HL) : OUT (VDP_DATA), A : INC HL : DJNZ .pp
 
     ; Nollaa molemmat ammukset
     LD      HL, BULLETS
@@ -57,13 +56,6 @@ INIT_BULLETS:
 .clr:XOR    A : LD (HL), A : INC HL : DJNZ .clr
 
     RET
-
-; =============================================================================
-; BULLET_PATTERN — suunta → pattern numero
-; =============================================================================
-BULLET_PATTERN:
-    ; 16x16 moodissa: yksi pattern kaikille suunnille
-    LD      A, 36 : RET    ; pattern 36 = offset 288
 
 ; =============================================================================
 ; TRY_FIRE — yritä ampua jos tulipainike pohjassa ja ammus ei aktiivinen
@@ -74,13 +66,11 @@ TRY_FIRE:
     LD      HL, BULLETS
     LD      A, B : OR A : JR Z, .got_addr
     LD      A, L : ADD A, BULLET_SIZE : LD L, A
-    LD      A, H : ADC A, 0 : LD H, A
 .got_addr:
     ; Aktiivinen jo? Jos kyllä, ei ampua (ääni tulee vain uudelle ammukselle)
     LD      A, B : ADD A, 4 : LD C, A   ; offset 4 = aktiivinen
     PUSH    HL
     LD      A, L : ADD A, 4 : LD L, A
-    LD      A, H : ADC A, 0 : LD H, A
     LD      A, (HL)
     POP     HL
     OR      A : RET NZ      ; jo aktiivinen
@@ -115,7 +105,6 @@ UPDATE_BULLET:
     ; Aktiivinen?
     PUSH    HL
     LD      A, L : ADD A, 4 : LD L, A
-    LD      A, H : ADC A, 0 : LD H, A
     LD      A, (HL)
     POP     HL
     OR      A : RET Z
@@ -123,7 +112,6 @@ UPDATE_BULLET:
     ; Hae suunta
     PUSH    HL
     LD      A, L : ADD A, 2 : LD L, A
-    LD      A, H : ADC A, 0 : LD H, A
     LD      A, (HL)
     POP     HL
     LD      D, A            ; D = suunta
@@ -171,7 +159,6 @@ UPDATE_BULLET:
 .deactivate:
     PUSH    HL
     LD      A, L : ADD A, 4 : LD L, A
-    LD      A, H : ADC A, 0 : LD H, A
     XOR     A : LD (HL), A
     POP     HL
     RET
@@ -196,7 +183,6 @@ CHECK_BULLET_HIT:
     ; Aktiivinen?
     PUSH    HL
     LD      A, L : ADD A, 4 : LD L, A
-    LD      A, H : ADC A, 0 : LD H, A
     LD      A, (HL)
     POP     HL
     OR      A : JR Z, .enext
@@ -218,7 +204,6 @@ CHECK_BULLET_HIT:
     ; OSUMA — deaktivoi vihollinen
     PUSH    HL
     LD      A, L : ADD A, 4 : LD L, A
-    LD      A, H : ADC A, 0 : LD H, A
     XOR     A : LD (HL), A
     POP     HL
     ; Käynnistä räjähdys vihollisen sijaintiin
@@ -238,7 +223,6 @@ CHECK_BULLET_HIT:
     ; Deaktivoi ammus (offset 4 = 0)
     PUSH    HL : PUSH BC
     LD      A, L : ADD A, 4 : LD L, A
-    LD      A, H : ADC A, 0 : LD H, A
     XOR     A : LD (HL), A
     POP     BC : POP HL
     ; Pisteet omistajan mukaan
@@ -253,7 +237,6 @@ CHECK_BULLET_HIT:
 .enext:
     POP     HL
     LD      A, L : ADD A, ENEMY_SIZE : LD L, A
-    LD      A, H : ADC A, 0 : LD H, A
     POP     BC : DJNZ .eloop
 
     POP     HL
@@ -283,32 +266,27 @@ UPDATE_BULLETS:
 ; =============================================================================
 DRAW_BULLETS:
     ; P1 ammus = sprite 8
+    LD      A, (0xC054) : OR A : JR Z, .hide_p1
     LD      HL, VRAM_SPRITE_ATT + 32 : CALL VDP_SETW
-    LD      A, (0xC054) : OR A : JR Z, .hide_p1  ; aktiivinen?
     LD      A, (0xC051) : DEC A : OUT (VDP_DATA), A  ; Y, TMS9918A: Y-1
-    LD      A, (0xC050) : OUT (VDP_DATA), A       ; X
-    ; pattern: DIR_RIGHT/LEFT=8, muut=9
-    LD      A, 36                                 ; 16x16 ammus pattern
-    OUT     (VDP_DATA), A
+    LD      A, (0xC050) : OUT (VDP_DATA), A           ; X
+    LD      A, 36 : OUT (VDP_DATA), A                 ; 16x16 ammus pattern
     LD      A, BULLET_COLOR : OUT (VDP_DATA), A
     JR      .p2_bullet
 .hide_p1:
-    LD      A, 0xD8 : OUT (VDP_DATA), A   ; Y=0xD8 piilottaa (ei stop-merkki)
-    XOR     A : OUT (VDP_DATA), A : OUT (VDP_DATA), A : OUT (VDP_DATA), A
+    LD      HL, VRAM_SPRITE_ATT + 32 : CALL HIDE_SPRITE
 
     ; P2 ammus = sprite 9
 .p2_bullet:
+    LD      A, (0xC05C) : OR A : JR Z, .hide_p2
     LD      HL, VRAM_SPRITE_ATT + 36 : CALL VDP_SETW
-    LD      A, (0xC05C) : OR A : JR Z, .hide_p2  ; aktiivinen? (BULLETS+BULLET_SIZE+4)
     LD      A, (0xC059) : DEC A : OUT (VDP_DATA), A  ; Y, TMS9918A: Y-1
-    LD      A, (0xC058) : OUT (VDP_DATA), A       ; X
-    LD      A, 36                                 ; 16x16 ammus pattern
-    OUT     (VDP_DATA), A
+    LD      A, (0xC058) : OUT (VDP_DATA), A           ; X
+    LD      A, 36 : OUT (VDP_DATA), A
     LD      A, BULLET_COLOR : OUT (VDP_DATA), A
     RET
 .hide_p2:
-    LD      A, 0xD8 : OUT (VDP_DATA), A   ; Y=0xD8 piilottaa (ei stop-merkki)
-    XOR     A : OUT (VDP_DATA), A : OUT (VDP_DATA), A : OUT (VDP_DATA), A
+    LD      HL, VRAM_SPRITE_ATT + 36 : CALL HIDE_SPRITE
     RET
 
 ; =============================================================================
@@ -379,9 +357,7 @@ DRAW_EXPLOSIONS:
     LD      A, E : OUT (VDP_DATA), A
     JR      .expl1
 .hide0:
-    LD      HL, VRAM_SPRITE_ATT + 40 : CALL VDP_SETW
-    LD      A, 0xD8 : OUT (VDP_DATA), A
-    XOR     A : OUT (VDP_DATA), A : OUT (VDP_DATA), A : OUT (VDP_DATA), A
+    LD      HL, VRAM_SPRITE_ATT + 40 : CALL HIDE_SPRITE
 
     ; --- Räjähdys 1 → sprite 11 ---
 .expl1:
@@ -403,7 +379,5 @@ DRAW_EXPLOSIONS:
     LD      A, E : OUT (VDP_DATA), A
     RET
 .hide1:
-    LD      HL, VRAM_SPRITE_ATT + 44 : CALL VDP_SETW
-    LD      A, 0xD8 : OUT (VDP_DATA), A
-    XOR     A : OUT (VDP_DATA), A : OUT (VDP_DATA), A : OUT (VDP_DATA), A
+    LD      HL, VRAM_SPRITE_ATT + 44 : CALL HIDE_SPRITE
     RET

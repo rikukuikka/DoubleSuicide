@@ -37,21 +37,18 @@ MAZE:
 
 ; IS_WALL — törmäystarkistus
 ; Sisääntulo: B=X C=Y → Z=vapaa NZ=seinä
-; Säästää kaikki rekisterit paitsi F
+; Säästää HL, DE (BC ei muutu eikä tarvitse tallentaa)
 IS_WALL:
     PUSH    HL
     PUSH    DE
-    PUSH    BC
     LD      A, B : SRL A : SRL A : SRL A : LD D, A
     LD      A, C : SRL A : SRL A : SRL A : LD E, A
     LD      H, 0 : LD L, E
     ADD     HL, HL : ADD HL, HL : ADD HL, HL : ADD HL, HL : ADD HL, HL
     LD      A, L : ADD A, D : LD L, A
-    LD      A, H : ADC A, 0 : LD H, A
     LD      A, L : ADD A, LOW MAZE : LD L, A
     LD      A, H : ADC A, HIGH MAZE : LD H, A
     LD      A, (HL)
-    POP     BC
     POP     DE
     POP     HL
     OR      A

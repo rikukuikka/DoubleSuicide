@@ -63,9 +63,8 @@ INIT_ENEMIES:
     ; Lataa sprite patternit (pattern 4 alkaen)
     LD      HL, VRAM_SPRITE_PAT + 256 : CALL VDP_SETW  ; 16x16: pelaaja vie 256 tavua (4 suuntaa × 2 framea)
     LD      HL, WORRIT_PATS
-    LD      BC, WORRIT_PATS_END - WORRIT_PATS
-.pp:LD      A, (HL) : OUT (VDP_DATA), A : INC HL
-    DEC     BC : LD A, B : OR C : JR NZ, .pp
+    LD      B, WORRIT_PATS_END - WORRIT_PATS
+.pp:LD      A, (HL) : OUT (VDP_DATA), A : INC HL : DJNZ .pp
 
     ; Nollaa kaikki
     LD      HL, ENEMIES
@@ -113,13 +112,6 @@ SPAWN_WORRIT:
     LD      (IX+3), ENEMY_WORRIT
     LD      (IX+4), 1
     RET
-
-; =============================================================================
-; WORRIT_PATTERN — suunta → sprite pattern numero
-; =============================================================================
-WORRIT_PATTERN:
-    ; 16x16 moodissa: yksi pattern kaikille suunnille
-    LD      A, 32 : RET    ; pattern 32 = offset 256
 
 ; =============================================================================
 ; UPDATE_WORRIT — liikuta yksi Worrit (IX = data)
@@ -205,32 +197,25 @@ UPDATE_ENEMIES:
 DRAW_ENEMIES:
     LD      IX, ENEMIES
     LD      B, MAX_ENEMIES
+    LD      DE, ENEMY_SIZE              ; DE säilyy koko silmukan ajan
     LD      HL, VRAM_SPRITE_ATT + 8    ; sprite 2 alkaen
+    CALL    VDP_SETW                    ; VDP osoite asetetaan kerran
 
 .loop:
-    PUSH    BC : PUSH HL
-
     LD      A, (IX+4) : OR A : JR Z, .hide
-
-    CALL    VDP_SETW
     LD      A, (IX+1) : OUT (VDP_DATA), A
     LD      A, (IX+0) : OUT (VDP_DATA), A
-    LD      A, (IX+2) : CALL WORRIT_PATTERN : OUT (VDP_DATA), A
+    LD      A, 32     : OUT (VDP_DATA), A    ; Worrit pattern (aina 32)
     LD      A, WORRIT_COLOR : OUT (VDP_DATA), A
     JR      .next
 
 .hide:
-    CALL    VDP_SETW
     LD      A, 0xD8 : OUT (VDP_DATA), A
     XOR     A : OUT (VDP_DATA), A : OUT (VDP_DATA), A : OUT (VDP_DATA), A
 
 .next:
-    POP     HL
-    LD      A, L : ADD A, 4 : LD L, A
-    LD      A, H : ADC A, 0 : LD H, A
-    LD      BC, ENEMY_SIZE
-    ADD     IX, BC
-    POP     BC : DJNZ .loop
+    ADD     IX, DE          ; B (laskuri) ei koske — LD BC,n olisi nollannut B:n
+    DJNZ    .loop
     RET
 
 ; =============================================================================

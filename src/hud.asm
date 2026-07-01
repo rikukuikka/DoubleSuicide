@@ -95,7 +95,8 @@ INIT_HUD:
     XOR     A
     LD      (P1_SCORE_H), A : LD (P1_SCORE_L), A
     LD      (P2_SCORE_H), A : LD (P2_SCORE_L), A
-    ; Piirrä HUD
+    ; Merkitse likainen ja piirrä HUD
+    LD      A, 1 : LD (HUD_DIRTY), A
     CALL    DRAW_HUD
     RET
 
@@ -131,6 +132,8 @@ INIT_HUD:
 ; DRAW_HUD — piirrä pisteet ja elämät riville 23
 ; =============================================================================
 DRAW_HUD:
+    LD      A, (HUD_DIRTY) : OR A : RET Z  ; ei muutoksia → ohita
+    XOR     A : LD (HUD_DIRTY), A           ; nollaa lippu
     LD      HL, VRAM_NAMETABLE + 23*32  ; rivi 23
     CALL    VDP_SETW
 
@@ -190,6 +193,7 @@ ADD_SCORE_P1:
     ADD     A, 0x01
     DAA
     LD      (P1_SCORE_H), A
+    LD      A, 1 : LD (HUD_DIRTY), A
     RET
 
 ; =============================================================================
@@ -200,4 +204,5 @@ ADD_SCORE_P2:
     ADD     A, 0x01
     DAA
     LD      (P2_SCORE_H), A
+    LD      A, 1 : LD (HUD_DIRTY), A
     RET
