@@ -39,8 +39,8 @@ IN_FIRE     EQU 0x10
 SPEED       EQU 2
 
 ; Sprite värit
-P1_COLOR    EQU 2   ; vihreä
-P2_COLOR    EQU 4   ; sininen
+P1_COLOR    EQU 4   ; sininen
+P2_COLOR    EQU 2   ; vihreä
 
 ; =============================================================================
 ; RAM-osoitteet 0xC000+

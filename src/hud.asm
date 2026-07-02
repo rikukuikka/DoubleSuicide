@@ -114,13 +114,13 @@ INIT_HUD:
     LD      B, 80
     LD      A, 0xF1
 .c1: OUT    (VDP_DATA), A : DJNZ .c1
-    ; P1 ikoni: 8 tavua vihreä mustalla (0x21)
-    LD      B, 8
-    LD      A, 0x21
-.c2: OUT    (VDP_DATA), A : DJNZ .c2
-    ; P2 ikoni: 8 tavua sininen mustalla (0x41)
+    ; P1 ikoni: 8 tavua sininen mustalla (0x21)
     LD      B, 8
     LD      A, 0x41
+.c2: OUT    (VDP_DATA), A : DJNZ .c2
+    ; P2 ikoni: 8 tavua vihreä mustalla (0x41)
+    LD      B, 8
+    LD      A, 0x21
 .c3: OUT    (VDP_DATA), A : DJNZ .c3
     ; Kirjaimet A-Z: 26 * 8 = 208 tavua, valkoinen mustalla
     LD      B, 208
