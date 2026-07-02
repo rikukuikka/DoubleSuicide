@@ -121,29 +121,78 @@ UPDATE_WORRIT:
 
     ; Kokeile liikkua nykyiseen suuntaan
     CP      DIR_UP : JR NZ, .not_up
-    LD      A, (IX+1) : SUB SPEED : CP 8 : JR C, .change
+    LD      A, (IX+1) : SUB SPEED : CP 8 : JP C, .change
     LD      E, A
-    LD      B, (IX+0) : LD C, E : CALL IS_WALL : JR NZ, .change
-    LD      (IX+1), E : RET
+    LD      B, (IX+0) : LD C, E : CALL IS_WALL : JP NZ, .change
+    LD      A, (IX+0) : ADD A, 15 : LD B, A : LD C, E : CALL IS_WALL : JP NZ, .change
+    LD      (IX+1), E : JP .maybe_turn
 .not_up:
     CP      DIR_DOWN : JR NZ, .not_down
-    LD      A, (IX+1) : ADD A, SPEED : CP 176 : JR NC, .change
+    LD      A, (IX+1) : ADD A, SPEED : CP 176 : JP NC, .change
     LD      E, A
-    LD      B, (IX+0) : LD A, E : ADD A, 15 : LD C, A : CALL IS_WALL : JR NZ, .change
-    LD      (IX+1), E : RET
+    LD      B, (IX+0) : LD A, E : ADD A, 15 : LD C, A : CALL IS_WALL : JP NZ, .change
+    LD      A, (IX+0) : ADD A, 15 : LD B, A : LD A, E : ADD A, 15 : LD C, A : CALL IS_WALL : JP NZ, .change
+    LD      (IX+1), E : JP .maybe_turn
 .not_down:
     CP      DIR_LEFT : JR NZ, .not_left
-    LD      A, (IX+0) : SUB SPEED : JR C, .change
+    LD      A, (IX+0) : SUB SPEED : JP C, .change
     LD      E, A
-    LD      B, E : LD A, (IX+1) : ADD A, 8 : LD C, A : CALL IS_WALL : JR NZ, .change
-    LD      (IX+0), E : RET
+    LD      B, E : LD C, (IX+1) : CALL IS_WALL : JP NZ, .change
+    LD      B, E : LD A, (IX+1) : ADD A, 15 : LD C, A : CALL IS_WALL : JP NZ, .change
+    LD      (IX+0), E : JP .maybe_turn
 .not_left:
     ; DIR_RIGHT
-    LD      A, (IX+0) : ADD A, SPEED : CP 241 : JR NC, .change
+    LD      A, (IX+0) : ADD A, SPEED : CP 241 : JP NC, .change
     LD      E, A
-    LD      A, E : ADD A, 15 : LD B, A
-    LD      A, (IX+1) : ADD A, 8 : LD C, A : CALL IS_WALL : JR NZ, .change
-    LD      (IX+0), E : RET
+    LD      A, E : ADD A, 15 : LD B, A : LD C, (IX+1) : CALL IS_WALL : JP NZ, .change
+    LD      A, E : ADD A, 15 : LD B, A : LD A, (IX+1) : ADD A, 15 : LD C, A : CALL IS_WALL : JP NZ, .change
+    LD      (IX+0), E
+
+.maybe_turn:
+    ; 8px tasaustarkistus — käänny vain tiilirajan kohdalla
+    LD      A, (IX+0) : AND 0x07 : RET NZ
+    LD      A, (IX+1) : AND 0x07 : RET NZ
+    ; 50% todennäköisyysportti
+    CALL    RAND : AND 0x01 : RET NZ
+
+    ; NAVMAP-haku: indeksi = (Y/8)*32 + (X/8)
+    LD      A, (IX+1) : SRL A : SRL A : SRL A   ; A = Y/8 = tiilirivi
+    LD      H, 0 : LD L, A
+    ADD     HL, HL : ADD HL, HL : ADD HL, HL : ADD HL, HL : ADD HL, HL   ; rivi*32
+    LD      A, (IX+0) : SRL A : SRL A : SRL A   ; A = X/8 = tiilisarake
+    ADD     A, L : LD L, A
+    LD      A, L : ADD A, LOW NAVMAP : LD L, A
+    LD      A, H : ADC A, HIGH NAVMAP : LD H, A
+    LD      A, (HL)          ; A = suuntabittikartta
+    OR      A : RET Z        ; ei saatavilla olevia suuntia
+
+    ; Suodata kohtisuorat suunnat nykyiselle liikkumissuunnalle
+    LD      B, A             ; B = kaikki saatavilla olevat suunnat
+    LD      A, (IX+2) : AND 0x02   ; bitti 1 = akseli (0=vaaka, 2=pysty)
+    JR      NZ, .mt_vert
+    ; Vaakasuuntainen (RIGHT/LEFT) → pystysuorat kohtisuorat (UP=b2, DOWN=b3)
+    LD      A, B : SRL A : SRL A : AND 0x03
+    LD      C, 2            ; pohjasuunta UP=2, DOWN=3
+    JR      .mt_pick
+.mt_vert:
+    ; Pystysuuntainen (UP/DOWN) → vaakasuorat kohtisuorat (RIGHT=b0, LEFT=b1)
+    LD      A, B : AND 0x03
+    LD      C, 0            ; pohjasuunta RIGHT=0, LEFT=1
+.mt_pick:
+    OR      A : RET Z        ; ei kohtisuoria saatavilla → jatka suoraan
+    LD      B, A
+    CP      0x03 : JR NZ, .mt_one
+    ; Molemmat kohtisuorat vapaina → arvo satunnaisesti
+    CALL    RAND : AND 0x01 : OR C : LD (IX+2), A
+    RET
+.mt_one:
+    ; Vain yksi kohtisuora suunta — valitse se
+    BIT     0, B : JR NZ, .mt_b0
+    LD      A, C : INC A : LD (IX+2), A   ; bitti1 → LEFT tai DOWN
+    RET
+.mt_b0:
+    LD      A, C : LD (IX+2), A            ; bitti0 → RIGHT tai UP
+    RET
 
 .change:
     ; Seinä edessä — kokeile satunnaisia suuntia
@@ -162,7 +211,7 @@ UPDATE_WORRIT:
     JR      .tok
 .td:CP      DIR_LEFT : JR NZ, .tl
     LD      A, (IX+0) : SUB SPEED : JR C, .tbad
-    LD      E, A : LD B, E : LD A, (IX+1) : ADD A, 3 : LD C, A : CALL IS_WALL : JR NZ, .tbad
+    LD      E, A : LD B, E : LD A, (IX+1) : ADD A, 8 : LD C, A : CALL IS_WALL : JR NZ, .tbad
     JR      .tok
 .tl:LD      A, (IX+0) : ADD A, SPEED : CP 241 : JR NC, .tbad
     LD      E, A : LD A, E : ADD A, 15 : LD B, A
@@ -203,7 +252,7 @@ DRAW_ENEMIES:
 
 .loop:
     LD      A, (IX+4) : OR A : JR Z, .hide
-    LD      A, (IX+1) : OUT (VDP_DATA), A
+    LD      A, (IX+1) : DEC A : OUT (VDP_DATA), A
     LD      A, (IX+0) : OUT (VDP_DATA), A
     LD      A, 32     : OUT (VDP_DATA), A    ; Worrit pattern (aina 32)
     LD      A, WORRIT_COLOR : OUT (VDP_DATA), A

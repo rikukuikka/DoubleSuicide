@@ -160,3 +160,71 @@ INIT_MAZE:
     LD      HL, 0x3000 : CALL LOAD_COLORS
     CALL    DRAW_MAZE
     RET
+
+; INIT_NAVMAP — laskee risteyspisteet etukäteen NAVMAP-taulukkoon
+; Kutsutaan kerran käynnistyksessä INIT_MAZE:n jälkeen.
+; Joka (sarake, rivi) kohdalle tallennetaan 4-bittinen suuntakartta:
+;   Bitti 0=RIGHT, 1=LEFT, 2=UP, 3=DOWN (0=ei kelvollinen paikka)
+; 2×2-tileblokki täytyy olla vapaa ja kyseinen naapuritile vapaa.
+INIT_NAVMAP:
+    ; Nollaa NAVMAP
+    XOR     A
+    LD      HL, NAVMAP
+    LD      (HL), A
+    LD      DE, NAVMAP + 1
+    LD      BC, 32*24 - 1
+    LDIR
+
+    ; IX = osoitin MAZE-taulukkoon (nykyinen solu)
+    ; IY = osoitin NAVMAP-taulukkoon (nykyinen solu)
+    ; D  = jäljellä olevia rivejä (23=rivi0 … 1=rivi22)
+    ; E  = jäljellä olevia sarakkeita (31=sar0 … 1=sar30)
+    LD      IX, MAZE
+    LD      IY, NAVMAP
+    LD      D, 23
+.nv_row:
+    LD      E, 31
+.nv_col:
+    ; Tarkista 2×2 blokki: kaikki neljä tileä täytyy olla vapaita
+    LD      A, (IX+0)  : OR A : JR NZ, .nv_skip
+    LD      A, (IX+1)  : OR A : JR NZ, .nv_skip
+    LD      A, (IX+32) : OR A : JR NZ, .nv_skip
+    LD      A, (IX+33) : OR A : JR NZ, .nv_skip
+
+    ; Laske suuntabittikartta rekisteriin B
+    LD      B, 0
+
+    ; RIGHT: sar+2 ≤ 31 (E ≥ 2) ja molemmat tlet vapaita
+    LD      A, E : CP 2 : JR C, .nv_nr
+    LD      A, (IX+2)  : OR A : JR NZ, .nv_nr
+    LD      A, (IX+34) : OR A : JR NZ, .nv_nr
+    SET     0, B
+.nv_nr:
+    ; LEFT: sar > 0 (E < 31) ja molemmat tlet vapaita
+    LD      A, E : CP 31 : JR Z, .nv_nl
+    LD      A, (IX-1)  : OR A : JR NZ, .nv_nl
+    LD      A, (IX+31) : OR A : JR NZ, .nv_nl
+    SET     1, B
+.nv_nl:
+    ; UP: rivi > 0 (D < 23) ja molemmat tlet vapaita
+    LD      A, D : CP 23 : JR Z, .nv_nu
+    LD      A, (IX-32) : OR A : JR NZ, .nv_nu
+    LD      A, (IX-31) : OR A : JR NZ, .nv_nu
+    SET     2, B
+.nv_nu:
+    ; DOWN: rivi < 22 (D > 1) ja molemmat tlet vapaita
+    LD      A, D : CP 1 : JR Z, .nv_nd
+    LD      A, (IX+64) : OR A : JR NZ, .nv_nd
+    LD      A, (IX+65) : OR A : JR NZ, .nv_nd
+    SET     3, B
+.nv_nd:
+    LD      (IY+0), B
+.nv_skip:
+    INC     IX
+    INC     IY
+    DEC     E : JR NZ, .nv_col
+    ; Ohita sarake 31 (siirry seuraavan rivin alkuun)
+    INC     IX
+    INC     IY
+    DEC     D : JR NZ, .nv_row
+    RET

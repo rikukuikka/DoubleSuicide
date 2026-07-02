@@ -39,6 +39,7 @@ INIT:
 
     ; Pelin alustus valinnan jälkeen
     CALL    INIT_MAZE
+    CALL    INIT_NAVMAP
     CALL    INIT_PLAYERS
     CALL    INIT_ENEMIES
     CALL    INIT_BULLETS

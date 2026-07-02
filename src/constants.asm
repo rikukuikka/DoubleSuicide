@@ -85,6 +85,10 @@ PORTAL_Y_MAX    EQU 111
 ; HUD-likainen lippu
 HUD_DIRTY       EQU 0xC080      ; 1 = DRAW_HUD täytyy ajaa, 0 = ohita
 
+; Risteyspisteiden suuntabittikartta (lasketaan kerran käynnistyksessä)
+; Bitti 0=RIGHT, 1=LEFT, 2=UP, 3=DOWN; 0=ei kelvollinen paikka
+NAVMAP          EQU 0xC100      ; 32*24=768 tavua (0xC100-0xC3FF)
+
 ; Räjähdykset
 EXPLOSIONS      EQU 0xC07A      ; 2*3=6 tavua RAM:issa (0xC060-0xC062 = SFX RAM)
 EXPL_SIZE       EQU 3
