@@ -31,9 +31,6 @@ MAZE:
     DB 1,0,0,1,0,0,1,0,0,1,0,0,1,1,1,1,1,1,1,1,0,0,1,0,0,1,0,0,1,0,0,1
     DB 1,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,1
     DB 1,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,1
-    DB 1,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,1
-    DB 1,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,1
-    DB 1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1
 
 ; IS_WALL — törmäystarkistus
 ; Sisääntulo: B=X C=Y → Z=vapaa NZ=seinä
@@ -41,8 +38,22 @@ MAZE:
 IS_WALL:
     PUSH    HL
     PUSH    DE
-    LD      A, B : SRL A : SRL A : SRL A : LD D, A
-    LD      A, C : SRL A : SRL A : SRL A : LD E, A
+    LD      A, B : SRL A : SRL A : SRL A : LD D, A    ; D = sarake = X/8
+    LD      A, C : SRL A : SRL A : SRL A : LD E, A    ; E = rivi   = Y/8
+    ; HUD-rivit (21+): käsittele erikseen jotta ei lueta MAZE:n ulkopuolelta
+    LD      A, E : CP 21 : JR C, .normal
+    JR      NZ, .wall                   ; rivi > 21 → seinä
+    ; Rivi 21: ovi-aukot sarakkeilla 1-2 ja 29-30
+    LD      A, D
+    CP      1  : JR C,  .wall           ; sarake 0 → seinä
+    CP      3  : JR C,  .free           ; sarakkeet 1-2 → ovi auki
+    CP      29 : JR C,  .wall           ; sarakkeet 3-28 → seinä
+    CP      31 : JR C,  .free           ; sarakkeet 29-30 → ovi auki
+.wall:
+    POP     DE : POP     HL : OR      1 : RET
+.free:
+    POP     DE : POP     HL : XOR     A : RET
+.normal:
     LD      H, 0 : LD L, E
     ADD     HL, HL : ADD HL, HL : ADD HL, HL : ADD HL, HL : ADD HL, HL
     LD      A, L : ADD A, D : LD L, A
@@ -76,7 +87,7 @@ LOAD_COLORS:
 DRAW_MAZE:
     LD      HL, VRAM_NAMETABLE : CALL VDP_SETW
     LD      HL, MAZE
-    LD      BC, 32*24
+    LD      BC, 32*21
 .lp:
     LD      A, (HL) : OUT (VDP_DATA), A : INC HL
     DEC     BC : LD A, B : OR C : JR NZ, .lp
@@ -90,7 +101,7 @@ DRAW_MAZE:
 ; =============================================================================
 FIND_PORTALS:
     LD      HL, MAZE
-    LD      B, 24               ; 24 riviä
+    LD      B, 21               ; 24 riviä
     LD      C, 0                ; rivi-laskuri
     LD      A, 0xFF
     LD      (PORTAL_Y_MIN), A   ; ei löydetty vielä
@@ -172,7 +183,7 @@ INIT_NAVMAP:
     LD      HL, NAVMAP
     LD      (HL), A
     LD      DE, NAVMAP + 1
-    LD      BC, 32*24 - 1
+    LD      BC, 32*21 - 1
     LDIR
 
     ; IX = osoitin MAZE-taulukkoon (nykyinen solu)
@@ -181,7 +192,7 @@ INIT_NAVMAP:
     ; E  = jäljellä olevia sarakkeita (31=sar0 … 1=sar30)
     LD      IX, MAZE
     LD      IY, NAVMAP
-    LD      D, 23
+    LD      D, 20
 .nv_row:
     LD      E, 31
 .nv_col:
@@ -206,13 +217,13 @@ INIT_NAVMAP:
     LD      A, (IX+31) : OR A : JR NZ, .nv_nl
     SET     1, B
 .nv_nl:
-    ; UP: rivi > 0 (D < 23) ja molemmat tlet vapaita
-    LD      A, D : CP 23 : JR Z, .nv_nu
+    ; UP: rivi > 0 (D < 20) ja molemmat tlet vapaita
+    LD      A, D : CP 20 : JR Z, .nv_nu
     LD      A, (IX-32) : OR A : JR NZ, .nv_nu
     LD      A, (IX-31) : OR A : JR NZ, .nv_nu
     SET     2, B
 .nv_nu:
-    ; DOWN: rivi < 22 (D > 1) ja molemmat tlet vapaita
+    ; DOWN: rivi < 19 (D > 1) ja molemmat tlet vapaita
     LD      A, D : CP 1 : JR Z, .nv_nd
     LD      A, (IX+64) : OR A : JR NZ, .nv_nd
     LD      A, (IX+65) : OR A : JR NZ, .nv_nd

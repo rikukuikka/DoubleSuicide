@@ -40,6 +40,10 @@ INIT:
     ; Pelin alustus valinnan jälkeen
     CALL    INIT_MAZE
     CALL    INIT_NAVMAP
+    ; Palauta HUD-värit kaikkiin pankkeihin TITLE_SCREENin jälkeen
+    LD      HL, 0x2000 + 16 : CALL LOAD_HUD_COLORS
+    LD      HL, 0x2800 + 16 : CALL LOAD_HUD_COLORS
+    LD      HL, 0x3000 + 16 : CALL LOAD_HUD_COLORS
     CALL    INIT_PLAYERS
     CALL    INIT_ENEMIES
     CALL    INIT_BULLETS
@@ -47,6 +51,7 @@ INIT:
     LD      A, 1 : LD (LEVEL), A
     XOR     A : LD (WAVE_TIMER), A
     LD      A, 1 : LD (HUD_DIRTY), A   ; DRAW_MAZE ylikirjoitti rivin 23
+    CALL    WAIT_VBLANK                 ; synkronoi VDP-kirjoitus vblankiin
     CALL    DRAW_HUD
 
     ; Pysytään DI-tilassa: C-BIOS:in V-blank-keskeytys ei aja eikä

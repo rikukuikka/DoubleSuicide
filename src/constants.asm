@@ -49,12 +49,12 @@ P2_COLOR    EQU 2   ; vihreä
 
 ; Pelaajien koordinaatit ja suunnat
 P1_START_X  EQU 8
-P1_START_Y  EQU 168
+P1_START_Y  EQU 176
 P1_X        EQU 0xC000
 P1_Y        EQU 0xC001
 P1_DIR      EQU 0xC002
 P2_START_X  EQU 232
-P2_START_Y  EQU 168
+P2_START_Y  EQU 176
 P2_X        EQU 0xC003
 P2_Y        EQU 0xC004
 P2_DIR      EQU 0xC005

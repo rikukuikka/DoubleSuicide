@@ -223,7 +223,7 @@ UPDATE_PLAYERS:
     LD      A, DIR_UP : LD (P1_DIR), A
 .p1nu:
     LD      A, (P1_INPUT) : AND IN_DOWN : JR Z, .p1nd
-    LD      A, (P1_Y) : ADD A, SPEED : CP 176 : JR NC, .p1nd : LD E, A
+    LD      A, (P1_Y) : ADD A, SPEED : CP 153 : JR NC, .p1nd : LD E, A
     ; Snap X ruuturajaan
     LD      A, (P1_X) : CALL SNAP_TO_GRID : LD D, A
     LD      B, D : LD A, E : ADD A, 15 : LD C, A : CALL IS_WALL : JR NZ, .p1nd
@@ -303,7 +303,7 @@ UPDATE_PLAYERS:
     LD      A, DIR_UP : LD (P2_DIR), A
 .p2nu:
     LD      A, (P2_INPUT) : AND IN_DOWN : JR Z, .p2nd
-    LD      A, (P2_Y) : ADD A, SPEED : CP 176 : JR NC, .p2nd : LD E, A
+    LD      A, (P2_Y) : ADD A, SPEED : CP 153 : JR NC, .p2nd : LD E, A
     LD      A, (P2_X) : CALL SNAP_TO_GRID : LD D, A
     LD      B, D : LD A, E : ADD A, 15 : LD C, A : CALL IS_WALL : JR NZ, .p2nd
     LD      A, D : ADD A, 15 : LD B, A : LD A, E : ADD A, 15 : LD C, A : CALL IS_WALL : JR NZ, .p2nd

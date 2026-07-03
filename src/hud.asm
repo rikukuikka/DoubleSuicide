@@ -9,6 +9,10 @@
 ;   ■ 3  0000                ■ 3  0000
 ;   0 1 2 3456  7...23  24 25 26 27282930 31
 
+; Tile-numerot (DIGIT_PATS ladataan tilestä 2 alkaen)
+; 10 digitiä (2-11) + 2 ikonia (12-13) + 26 kirjainta (14-39) + 1 ovi (40)
+OVI_TILE    EQU 40
+
 ; RAM
 P1_SCORE_H  EQU 0xC070      ; BCD: tuhannet/sadat
 P1_SCORE_L  EQU 0xC071      ; BCD: kymmenet/ykköset
@@ -57,6 +61,8 @@ DIGIT_PATS:
     DB #EE,#6C,#6C,#38,#38,#6C,#6C,#EE  ; 'X'  ;; UUSI
     DB #F6,#62,#74,#38,#18,#18,#18,#3C  ; 'Y'
     DB #FE,#86,#0C,#18,#30,#60,#C2,#FE  ; 'Z'  ;; UUSI
+; Ovi-tile
+    DB $55,$AA,$00,$00,$00,$00,$00,$00
 DIGIT_PATS_END:
 
 ; =============================================================================
@@ -88,9 +94,9 @@ INIT_HUD:
     LD      HL, 0x0800 + 16 : CALL .load_dp
     LD      HL, 0x1000 + 16 : CALL .load_dp
     ; Lataa värit kolmeen pankkiin
-    LD      HL, 0x2000 + 16 : CALL .load_dc
-    LD      HL, 0x2800 + 16 : CALL .load_dc
-    LD      HL, 0x3000 + 16 : CALL .load_dc
+    LD      HL, 0x2000 + 16 : CALL LOAD_HUD_COLORS
+    LD      HL, 0x2800 + 16 : CALL LOAD_HUD_COLORS
+    LD      HL, 0x3000 + 16 : CALL LOAD_HUD_COLORS
     ; Nollaa pisteet
     XOR     A
     LD      (P1_SCORE_H), A : LD (P1_SCORE_L), A
@@ -108,17 +114,17 @@ INIT_HUD:
     DEC     BC : LD A, B : OR C : JR NZ, .dp
     RET
 
-.load_dc:
+LOAD_HUD_COLORS:
     CALL    VDP_SETW
     ; 10 numeroa * 8 tavua: valkoinen mustalla (0xF1)
     LD      B, 80
     LD      A, 0xF1
 .c1: OUT    (VDP_DATA), A : DJNZ .c1
-    ; P1 ikoni: 8 tavua sininen mustalla (0x21)
+    ; P1 ikoni: 8 tavua sininen mustalla
     LD      B, 8
     LD      A, 0x41
 .c2: OUT    (VDP_DATA), A : DJNZ .c2
-    ; P2 ikoni: 8 tavua vihreä mustalla (0x41)
+    ; P2 ikoni: 8 tavua vihreä mustalla
     LD      B, 8
     LD      A, 0x21
 .c3: OUT    (VDP_DATA), A : DJNZ .c3
@@ -126,6 +132,13 @@ INIT_HUD:
     LD      B, 208
     LD      A, 0xF1
 .c4: OUT    (VDP_DATA), A : DJNZ .c4
+    ; Ovi-tile (40): 2 tavua 0x54 (pikselli-rivit 0-1), 6 tavua 0x51 (rivit 2-7)
+    LD      B, 2
+    LD      A, 0x54
+.c5: OUT    (VDP_DATA), A : DJNZ .c5
+    LD      B, 6
+    LD      A, 0x51
+.c6: OUT    (VDP_DATA), A : DJNZ .c6
     RET
 
 ; =============================================================================
@@ -134,13 +147,58 @@ INIT_HUD:
 DRAW_HUD:
     LD      A, (HUD_DIRTY) : OR A : RET Z  ; ei muutoksia → ohita
     XOR     A : LD (HUD_DIRTY), A           ; nollaa lippu
-    LD      HL, VRAM_NAMETABLE + 23*32  ; rivi 23
+    LD      HL, VRAM_NAMETABLE + 21*32  ; rivi 23
     CALL    VDP_SETW
 
-    ; Tile 0-3: seinä (4 kpl) — säilyttää kartan reunan
-    LD      B, 4
+    ; Rivi 21
+    ; Tile 0: seinä
+    LD      A, 1 : OUT (VDP_DATA), A
+    ; Tile 1-2: ovi (2 kpl)
+    LD      B, 2
+    LD      A, OVI_TILE
+.ds1: OUT    (VDP_DATA), A : DJNZ .ds1
+    ; Tile 3-29: seinä (26 kpl) — säilyttää kartan reunan
+    LD      B, 26
     LD      A, 1
 .ws1: OUT   (VDP_DATA), A : DJNZ .ws1
+    ; Tile 30-31: ovi (2 kpl)
+    LD      B, 2
+    LD      A, OVI_TILE
+.ds2: OUT    (VDP_DATA), A : DJNZ .ds2
+    ; Tile 32: seinä
+    LD      A, 1 : OUT (VDP_DATA), A
+
+    ; Rivi 22
+    ; Tile 0: seinä
+    LD      A, 1 : OUT (VDP_DATA), A
+    ; Tile 1-2: tyhjä (2 kpl)
+    LD      B, 2
+    XOR     A
+.sp1: OUT    (VDP_DATA), A : DJNZ .sp1
+    ; Tile 3: seinä
+    LD      A, 1 : OUT (VDP_DATA), A
+    ; Tile 4-28: tyhjä (24 kpl)
+    LD      B, 24
+    XOR     A
+.sp2: OUT    (VDP_DATA), A : DJNZ .sp2
+    ; Tile 29: seinä
+    LD      A, 1 : OUT (VDP_DATA), A
+    ; Tile 30-31: tyhjä (2 kpl)
+    LD      B, 2
+    XOR     A
+.sp3: OUT    (VDP_DATA), A : DJNZ .sp3
+    ; Tile 32: seinä
+    LD      A, 1 : OUT (VDP_DATA), A
+
+    ; Rivi 23
+    ; Tile 0: seinä
+    LD      A, 1 : OUT (VDP_DATA), A
+    ; Tile 1-2: tyhjä (2 kpl)
+    LD      B, 2
+    XOR     A
+.sp4: OUT    (VDP_DATA), A : DJNZ .sp4
+    ; Tile 3: seinä
+    LD      A, 1 : OUT (VDP_DATA), A
     ; Tile 5: P1 elämät
     LD      A, (P1_LIVES) : ADD A, 2 : OUT (VDP_DATA), A
     ; Tile 6: tyhjä
@@ -161,7 +219,7 @@ DRAW_HUD:
     ; Tile 11-20: tyhjä (10 kpl)
     LD      B, 8
     XOR     A
-.sp: OUT    (VDP_DATA), A : DJNZ .sp
+.sp5: OUT    (VDP_DATA), A : DJNZ .sp5
     ; Tile 24-27: P2 pisteet
     LD      A, (P2_SCORE_H)
     RRCA : RRCA : RRCA : RRCA : AND 0x0F : ADD A, 2 : OUT (VDP_DATA), A
@@ -179,10 +237,14 @@ DRAW_HUD:
     XOR     A : OUT (VDP_DATA), A
     ; Tile 22: P2 elämät
     LD      A, (P2_LIVES) : ADD A, 2 : OUT (VDP_DATA), A
-    ; Tile 28-31: seinä (4 kpl)
-    LD      B, 4
-    LD      A, 1
-.ws2: OUT   (VDP_DATA), A : DJNZ .ws2
+    ; Tile 23: seinä
+    LD      A, 1 : OUT (VDP_DATA), A
+    ; Tile 24-25: tyhjä (2 kpl)
+    LD      B, 2
+    XOR     A
+.sp6: OUT    (VDP_DATA), A : DJNZ .sp6
+    ; Tile 26: seinä
+    LD      A, 1 : OUT (VDP_DATA), A
     RET
 
 ; =============================================================================

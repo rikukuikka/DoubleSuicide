@@ -1,5 +1,8 @@
 ; =============================================================================
-; sound.asm — PSG AY-3-8910 ääniefektit + taustamusiikki
+; sound.asm — VERSIO: SAHALAITA-BUZZER (laitteisto-envelope)
+; Kanava C soi envelope-generaattorilla äänitaajuudella
+; → aito sahalaita-aaltomuoto kanttiaallon sijaan!
+; R13 arvot: 0x08=sahalaita, 0x0E=kolmio, 0x0C=käänteinen saha
 ; =============================================================================
 ;
 ; R7 mixer bitit 7,6 aina: bit7=1 (portB out), bit6=0 (portA in)
@@ -110,13 +113,23 @@ BGM_UPDATE:
     LD      A, E : OR D
     JR      Z, .mute
 
-    ; Soita nuotti kanavalla C (R4=fine, R5=coarse)
-    LD      A, 4  : OUT (PSG_REG_W), A
-    LD      A, E  : OUT (PSG_DAT_W), A
-    LD      A, 5  : OUT (PSG_REG_W), A
-    LD      A, D  : OUT (PSG_DAT_W), A
+    ; SAHALAITA-BUZZER: envelope toistuu äänitaajuudella
+    ; Envelope period = tone period / 16 → sama sävelkorkeus
+    SRL     D : RR E
+    SRL     D : RR E
+    SRL     D : RR E
+    SRL     D : RR E
+    LD      A, 11 : OUT (PSG_REG_W), A
+    LD      A, E  : OUT (PSG_DAT_W), A    ; envelope fine
+    LD      A, 12 : OUT (PSG_REG_W), A
+    LD      A, D  : OUT (PSG_DAT_W), A    ; envelope coarse
+    ; Kanava C envelope-moodiin (R10 bit 4 = 1)
     LD      A, 10 : OUT (PSG_REG_W), A
-    LD      A, 10 : OUT (PSG_DAT_W), A    ; voimakkuus 10 (ei liian kovaa)
+    LD      A, 0x10 : OUT (PSG_DAT_W), A
+    ; Envelope muoto: 0x08 = toistuva sahalaita
+    ; Kokeile myös: 0x0E = toistuva kolmio, 0x0C = käänteinen sahalaita
+    LD      A, 13 : OUT (PSG_REG_W), A
+    LD      A, 0x0E : OUT (PSG_DAT_W), A
     RET
 
 .mute:
@@ -181,9 +194,9 @@ UPDATE_SOUND:
     LD      A, (SFX_B_CTR) : OR A : JR Z, .no_b
     RES     4, D            ; B noise päällä (bit 4 = 0)
 .no_b:
-    LD      A, (BGM_ACTIVE) : OR A : JR Z, .no_c
-    RES     2, D            ; C tone päällä (bit 2 = 0)
-.no_c:
+    ; Buzzer-moodi: kanavan C tone-mixer pysyy POIS (bit 2 = 1).
+    ; Ääni syntyy pelkästä envelope-amplitudimodulaatiosta —
+    ; tämä on se klassinen 'buzzer bass' -tekniikka.
     LD      A, 7 : OUT (PSG_REG_W), A
     LD      A, D : OUT (PSG_DAT_W), A
     RET
@@ -202,104 +215,103 @@ UPDATE_SOUND:
 ; =============================================================================
 SONG_DATA:
     ; --- Fraasi 1 ---
-    DB 12, 0x57, 0x03    ; C3
+    DB 12, 0xAC, 0x01    ; C4
     DB 1,  0x00, 0x00    ; tauko
-    DB 5, 0x3B, 0x02    ; G3
+    DB 5, 0x1D, 0x01    ; G4
     DB 1,  0x00, 0x00
-    DB 4, 0xcf, 0x02    ; D#3
+    DB 4, 0x68, 0x01    ; D#4
     DB 1,  0x00, 0x00
-    DB 10, 0xFA, 0x02    ; D3
+    DB 10, 0x7D, 0x01    ; D4
     DB 1,  0x00, 0x00
-    DB 12, 0xcf, 0x02    ; D#3
+    DB 12, 0x68, 0x01    ; D#4
     DB 1,  0x00, 0x00
-    DB 4, 0xFA, 0x02    ; D3
+    DB 4, 0x7D, 0x01    ; D4
     DB 1,  0x00, 0x00
-    DB 4, 0xcf, 0x02    ; D#3
+    DB 4, 0x68, 0x01    ; D#4
     DB 1,  0x00, 0x00
-    DB 4, 0xFA, 0x02    ; D3
+    DB 4, 0x7D, 0x01    ; D4
     DB 1,  0x00, 0x00
-    DB 4, 0xcf, 0x02    ; D#3
+    DB 4, 0x68, 0x01    ; D#4
     DB 1,  0x00, 0x00
-    DB 12, 0xFA, 0x02    ; D3
+    DB 12, 0x7D, 0x01    ; D4
     DB 1,  0x00, 0x00
-    DB 12, 0xcf, 0x02    ; D#3
+    DB 12, 0x68, 0x01    ; D#4
     DB 1,  0x00, 0x00
 
     ; --- Fraasi 2 ---
-    DB 12, 0x57, 0x03    ; C3
+    DB 12, 0xAC, 0x01    ; C4
     DB 1,  0x00, 0x00    ; tauko
-    DB 5, 0x3B, 0x02    ; G3
+    DB 5, 0x1D, 0x01    ; G4
     DB 1,  0x00, 0x00
-    DB 4, 0xcf, 0x02    ; D#3
+    DB 4, 0x68, 0x01    ; D#4
     DB 1,  0x00, 0x00
-    DB 10, 0xFA, 0x02    ; D3
+    DB 10, 0x7D, 0x01    ; D4
     DB 1,  0x00, 0x00
-    DB 12, 0xcf, 0x02    ; D#3
+    DB 12, 0x68, 0x01    ; D#4
     DB 1,  0x00, 0x00
-    DB 22, 0xFA, 0x02    ; D3
+    DB 22, 0x7D, 0x01    ; D4
     DB 3,  0x00, 0x00
-    DB 22, 0x57, 0x03    ; C3
+    DB 22, 0xAC, 0x01    ; C4
     DB 3,  0x00, 0x00    ; tauko
 
     ; --- Fraasi 3 ---
-    DB 4, 0x57, 0x03    ; C3
+    DB 4, 0xAC, 0x01    ; C4
     DB 1,  0x00, 0x00    ; tauko
-    DB 4, 0x57, 0x03    ; C3
+    DB 4, 0xAC, 0x01    ; C4
     DB 1,  0x00, 0x00    ; tauko
-    DB 4, 0x57, 0x03    ; C3
+    DB 4, 0xAC, 0x01    ; C4
     DB 1,  0x00, 0x00    ; tauko
-    DB 4, 0x57, 0x03    ; C3
+    DB 4, 0xAC, 0x01    ; C4
     DB 1,  0x00, 0x00    ; tauko
-    DB 4, 0xcf, 0x02    ; D#3
+    DB 4, 0x68, 0x01    ; D#4
     DB 1,  0x00, 0x00
-    DB 4, 0xFA, 0x02    ; D3
+    DB 4, 0x7D, 0x01    ; D4
     DB 1,  0x00, 0x00
-    DB 4, 0xcf, 0x02    ; D#3
+    DB 4, 0x68, 0x01    ; D#4
     DB 1,  0x00, 0x00
-    DB 4, 0xFA, 0x02    ; D3
+    DB 4, 0x7D, 0x01    ; D4
     DB 1,  0x00, 0x00
-    DB 4, 0x57, 0x03    ; C3
+    DB 4, 0xAC, 0x01    ; C4
     DB 1,  0x00, 0x00    ; tauko
-    DB 4, 0x57, 0x03    ; C3
+    DB 4, 0xAC, 0x01    ; C4
     DB 1,  0x00, 0x00    ; tauko
-    DB 4, 0x57, 0x03    ; C3
+    DB 4, 0xAC, 0x01    ; C4
     DB 1,  0x00, 0x00    ; tauko
-    DB 4, 0x57, 0x03    ; C3
+    DB 4, 0xAC, 0x01    ; C4
     DB 1,  0x00, 0x00    ; tauko
-    DB 4, 0xcf, 0x02    ; D#3
+    DB 4, 0x68, 0x01    ; D#4
     DB 1,  0x00, 0x00
-    DB 4, 0xFA, 0x02    ; D3
+    DB 4, 0x7D, 0x01    ; D4
     DB 1,  0x00, 0x00
-    DB 4, 0xcf, 0x02    ; D#3
+    DB 4, 0x68, 0x01    ; D#4
     DB 1,  0x00, 0x00
-    DB 4, 0xFA, 0x02    ; D3
+    DB 4, 0x7D, 0x01    ; D4
     DB 1,  0x00, 0x00
-    DB 4, 0x57, 0x03    ; C3
+    DB 4, 0xAC, 0x01    ; C4
     DB 1,  0x00, 0x00    ; tauko
-    DB 4, 0x57, 0x03    ; C3
+    DB 4, 0xAC, 0x01    ; C4
     DB 1,  0x00, 0x00    ; tauko
-    DB 4, 0x57, 0x03    ; C3
+    DB 4, 0xAC, 0x01    ; C4
     DB 1,  0x00, 0x00    ; tauko
-    DB 4, 0x57, 0x03    ; C3
+    DB 4, 0xAC, 0x01    ; C4
     DB 1,  0x00, 0x00    ; tauko
-    DB 4, 0xcf, 0x02    ; D#3
+    DB 4, 0x68, 0x01    ; D#4
     DB 1,  0x00, 0x00
-    DB 4, 0xFA, 0x02    ; D3
+    DB 4, 0x7D, 0x01    ; D4
     DB 1,  0x00, 0x00
-    DB 4, 0xcf, 0x02    ; D#3
+    DB 4, 0x68, 0x01    ; D#4
     DB 1,  0x00, 0x00
-    DB 4, 0xFA, 0x02    ; D3
+    DB 4, 0x7D, 0x01    ; D4
     DB 1,  0x00, 0x00
-    DB 12, 0xA7, 0x02    ; E3
+    DB 12, 0x53, 0x01    ; E4
     DB 1,  0x00, 0x00
-    DB 4, 0xcf, 0x02    ; D#3
+    DB 4, 0x68, 0x01    ; D#4
     DB 1,  0x00, 0x00
-    DB 4, 0xFA, 0x02    ; D3
+    DB 4, 0x7D, 0x01    ; D4
     DB 1,  0x00, 0x00
-    DB 22, 0x57, 0x03    ; C3
+    DB 22, 0xAC, 0x01    ; C4
     DB 4,  0x00, 0x00    ; tauko
 
 
     ; --- Loop ---
     DB 0, 0, 0
-

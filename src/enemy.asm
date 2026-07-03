@@ -128,7 +128,7 @@ UPDATE_WORRIT:
     LD      (IX+1), E : JP .maybe_turn
 .not_up:
     CP      DIR_DOWN : JR NZ, .not_down
-    LD      A, (IX+1) : ADD A, SPEED : CP 176 : JP NC, .change
+    LD      A, (IX+1) : ADD A, SPEED : CP 153 : JP NC, .change
     LD      E, A
     LD      B, (IX+0) : LD A, E : ADD A, 15 : LD C, A : CALL IS_WALL : JP NZ, .change
     LD      A, (IX+0) : ADD A, 15 : LD B, A : LD A, E : ADD A, 15 : LD C, A : CALL IS_WALL : JP NZ, .change
@@ -206,7 +206,7 @@ UPDATE_WORRIT:
     LD      E, A : LD B, (IX+0) : LD C, E : CALL IS_WALL : JR NZ, .tbad
     JR      .tok
 .tu:CP      DIR_DOWN : JR NZ, .td
-    LD      A, (IX+1) : ADD A, SPEED : CP 176 : JR NC, .tbad
+    LD      A, (IX+1) : ADD A, SPEED : CP 153 : JR NC, .tbad
     LD      E, A : LD B, (IX+0) : LD A, E : ADD A, 15 : LD C, A : CALL IS_WALL : JR NZ, .tbad
     JR      .tok
 .td:CP      DIR_LEFT : JR NZ, .tl
