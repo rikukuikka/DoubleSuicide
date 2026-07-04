@@ -18,19 +18,36 @@ MAX_ENEMIES     EQU 6
 ENEMIES         EQU 0xC010      ; 6*8=48 tavua RAM:issa
 RAND_SEED       EQU 0xC040      ; 2 tavua
 
-WORRIT_COLOR    EQU 14          ; keltainen
+WORRIT_COLOR    EQU 10          ; keltainen
 
 WORRIT_PATS:
     ; 16x16 Worrit (pattern 8 = offset 64, yksi frame)
-    ; Vasen puoli ylä (rivit 0-7)
-    DB 0x03,0x0F,0x1F,0x3F,0x3B,0x3B,0x3F,0x3F
-    ; Vasen puoli ala (rivit 8-15)
-    DB 0x3F,0x3F,0x3F,0x3F,0x3B,0x2D,0x00,0x00
-    ; Oikea puoli ylä (rivit 0-7)
-    DB 0xC0,0xF0,0xF8,0xFC,0xDC,0xDC,0xFC,0xFC
-    ; Oikea puoli ala (rivit 8-15)
-    DB 0xFC,0xFC,0xFC,0xFC,0xDC,0xB4,0x00,0x00
+    ;Oikea
+    DB $00,$03,$07,$07,$03,$01,$03,$06
+    DB $05,$05,$06,$3F,$49,$49,$3F,$00
+    DB $00,$C0,$00,$E0,$E0,$80,$C0,$64
+    DB $FE,$A0,$60,$FC,$92,$92,$FC,$00
+    ;Vasen
+    DB $00,$03,$00,$07,$07,$01,$03,$26
+    DB $7F,$05,$06,$3F,$49,$49,$3F,$00
+    DB $00,$C0,$E0,$E0,$C0,$80,$C0,$60
+    DB $A0,$A0,$60,$FC,$92,$92,$FC,$00
+    ;Alas
+    DB $00,$30,$48,$48,$78,$4F,$4C,$7B
+    DB $7B,$4D,$4F,$79,$49,$49,$31,$00
+    DB $00,$00,$00,$00,$00,$8C,$DE,$7E
+    DB $7A,$DA,$98,$00,$00,$80,$00,$00
+    ;Ylös
+    DB $00,$00,$01,$00,$00,$19,$5B,$5E
+    DB $7E,$7B,$31,$00,$00,$00,$00,$00
+    DB $00,$8C,$92,$92,$9E,$F2,$B2,$DE
+    DB $DE,$32,$F2,$1E,$12,$12,$0C,$00
+
 WORRIT_PATS_END:
+
+    ALIGN   4
+WORRIT_DIR_PAT:
+    DB 32, 36, 44, 40   ; DIR_RIGHT=0, DIR_LEFT=1, DIR_UP=2, DIR_DOWN=3
 
 ; =============================================================================
 ; RAND — 16-bit LFSR satunnaisluku, ulostulo A
@@ -121,28 +138,28 @@ UPDATE_WORRIT:
 
     ; Kokeile liikkua nykyiseen suuntaan
     CP      DIR_UP : JR NZ, .not_up
-    LD      A, (IX+1) : SUB SPEED : CP 8 : JP C, .change
+    LD      A, (IX+1) : SUB ENEMY_SPEED : CP 8 : JP C, .change
     LD      E, A
     LD      B, (IX+0) : LD C, E : CALL IS_WALL : JP NZ, .change
     LD      A, (IX+0) : ADD A, 15 : LD B, A : LD C, E : CALL IS_WALL : JP NZ, .change
     LD      (IX+1), E : JP .maybe_turn
 .not_up:
     CP      DIR_DOWN : JR NZ, .not_down
-    LD      A, (IX+1) : ADD A, SPEED : CP 153 : JP NC, .change
+    LD      A, (IX+1) : ADD A, ENEMY_SPEED : CP 153 : JP NC, .change
     LD      E, A
     LD      B, (IX+0) : LD A, E : ADD A, 15 : LD C, A : CALL IS_WALL : JP NZ, .change
     LD      A, (IX+0) : ADD A, 15 : LD B, A : LD A, E : ADD A, 15 : LD C, A : CALL IS_WALL : JP NZ, .change
     LD      (IX+1), E : JP .maybe_turn
 .not_down:
     CP      DIR_LEFT : JR NZ, .not_left
-    LD      A, (IX+0) : SUB SPEED : JP C, .change
+    LD      A, (IX+0) : SUB ENEMY_SPEED : JP C, .change
     LD      E, A
     LD      B, E : LD C, (IX+1) : CALL IS_WALL : JP NZ, .change
     LD      B, E : LD A, (IX+1) : ADD A, 15 : LD C, A : CALL IS_WALL : JP NZ, .change
     LD      (IX+0), E : JP .maybe_turn
 .not_left:
     ; DIR_RIGHT
-    LD      A, (IX+0) : ADD A, SPEED : CP 241 : JP NC, .change
+    LD      A, (IX+0) : ADD A, ENEMY_SPEED : CP 241 : JP NC, .change
     LD      E, A
     LD      A, E : ADD A, 15 : LD B, A : LD C, (IX+1) : CALL IS_WALL : JP NZ, .change
     LD      A, E : ADD A, 15 : LD B, A : LD A, (IX+1) : ADD A, 15 : LD C, A : CALL IS_WALL : JP NZ, .change
@@ -202,18 +219,18 @@ UPDATE_WORRIT:
     CALL    RAND : AND 0x03 : LD D, A
 
     CP      DIR_UP : JR NZ, .tu
-    LD      A, (IX+1) : SUB SPEED : CP 8 : JR C, .tbad
+    LD      A, (IX+1) : SUB ENEMY_SPEED : CP 8 : JR C, .tbad
     LD      E, A : LD B, (IX+0) : LD C, E : CALL IS_WALL : JR NZ, .tbad
     JR      .tok
 .tu:CP      DIR_DOWN : JR NZ, .td
-    LD      A, (IX+1) : ADD A, SPEED : CP 153 : JR NC, .tbad
+    LD      A, (IX+1) : ADD A, ENEMY_SPEED : CP 153 : JR NC, .tbad
     LD      E, A : LD B, (IX+0) : LD A, E : ADD A, 15 : LD C, A : CALL IS_WALL : JR NZ, .tbad
     JR      .tok
 .td:CP      DIR_LEFT : JR NZ, .tl
-    LD      A, (IX+0) : SUB SPEED : JR C, .tbad
+    LD      A, (IX+0) : SUB ENEMY_SPEED : JR C, .tbad
     LD      E, A : LD B, E : LD A, (IX+1) : ADD A, 8 : LD C, A : CALL IS_WALL : JR NZ, .tbad
     JR      .tok
-.tl:LD      A, (IX+0) : ADD A, SPEED : CP 241 : JR NC, .tbad
+.tl:LD      A, (IX+0) : ADD A, ENEMY_SPEED : CP 241 : JR NC, .tbad
     LD      E, A : LD A, E : ADD A, 15 : LD B, A
     LD      A, (IX+1) : ADD A, 8 : LD C, A : CALL IS_WALL : JR NZ, .tbad
 .tok:
@@ -254,7 +271,8 @@ DRAW_ENEMIES:
     LD      A, (IX+4) : OR A : JR Z, .hide
     LD      A, (IX+1) : DEC A : OUT (VDP_DATA), A
     LD      A, (IX+0) : OUT (VDP_DATA), A
-    LD      A, 32     : OUT (VDP_DATA), A    ; Worrit pattern (aina 32)
+    LD      HL, WORRIT_DIR_PAT : LD A, (IX+2) : ADD A, L : LD L, A : LD A, (HL)
+    OUT     (VDP_DATA), A
     LD      A, WORRIT_COLOR : OUT (VDP_DATA), A
     JR      .next
 

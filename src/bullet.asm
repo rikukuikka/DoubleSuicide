@@ -45,7 +45,7 @@ BULLET_PATS_END:
 ; =============================================================================
 INIT_BULLETS:
     ; Lataa sprite patternit (pattern 8 alkaen = offset 8*8=64)
-    LD      HL, VRAM_SPRITE_PAT + 288 : CALL VDP_SETW  ; 16x16: pelaaja 256 + enemy 32
+    LD      HL, VRAM_SPRITE_PAT + 384 : CALL VDP_SETW  ; 16x16: pelaaja 256 + Worrit 128
     LD      HL, BULLET_PATS
     LD      B, BULLET_PATS_END - BULLET_PATS
 .pp:LD      A, (HL) : OUT (VDP_DATA), A : INC HL : DJNZ .pp
@@ -270,7 +270,7 @@ DRAW_BULLETS:
     LD      HL, VRAM_SPRITE_ATT + 32 : CALL VDP_SETW
     LD      A, (0xC051) : DEC A : OUT (VDP_DATA), A  ; Y, TMS9918A: Y-1
     LD      A, (0xC050) : OUT (VDP_DATA), A           ; X
-    LD      A, 36 : OUT (VDP_DATA), A                 ; 16x16 ammus pattern
+    LD      A, 48 : OUT (VDP_DATA), A                 ; 16x16 ammus pattern
     LD      A, BULLET_COLOR : OUT (VDP_DATA), A
     JR      .p2_bullet
 .hide_p1:
@@ -282,7 +282,7 @@ DRAW_BULLETS:
     LD      HL, VRAM_SPRITE_ATT + 36 : CALL VDP_SETW
     LD      A, (0xC059) : DEC A : OUT (VDP_DATA), A  ; Y, TMS9918A: Y-1
     LD      A, (0xC058) : OUT (VDP_DATA), A           ; X
-    LD      A, 36 : OUT (VDP_DATA), A
+    LD      A, 48 : OUT (VDP_DATA), A
     LD      A, BULLET_COLOR : OUT (VDP_DATA), A
     RET
 .hide_p2:

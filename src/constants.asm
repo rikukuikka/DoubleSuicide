@@ -37,6 +37,7 @@ IN_FIRE     EQU 0x10
 
 ; Pelinopeus
 SPEED       EQU 2
+ENEMY_SPEED EQU 1
 
 ; Sprite värit
 P1_COLOR    EQU 4   ; sininen
@@ -93,7 +94,7 @@ NAVMAP          EQU 0xC100      ; 32*24=768 tavua (0xC100-0xC3FF)
 EXPLOSIONS      EQU 0xC07A      ; 2*3=6 tavua RAM:issa (0xC060-0xC062 = SFX RAM)
 EXPL_SIZE       EQU 3
 EXPL_TIMER_MAX  EQU 20
-EXPL_PAT1       EQU 40          ; Räjähdys 1 (kirkas) = offset 320
-EXPL_PAT2       EQU 44          ; Räjähdys 2 (haalistuva) = offset 352
+EXPL_PAT1       EQU 52          ; Räjähdys 1 (kirkas) = offset 416
+EXPL_PAT2       EQU 56          ; Räjähdys 2 (haalistuva) = offset 448
 EXPL_COLOR1     EQU 15          ; valkoinen välähdys
 EXPL_COLOR2     EQU 9           ; vaaleanpunainen sammuminen
