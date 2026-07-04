@@ -60,6 +60,15 @@ INIT:
 MAINLOOP:
     CALL    WAIT_VBLANK
     LD      A, (FRAME_CTR) : INC A : LD (FRAME_CTR), A
+
+    ; Kaikki VDP-kirjoitukset heti vblankin jälkeen
+    CALL    DRAW_PLAYERS
+    CALL    DRAW_ENEMIES
+    CALL    DRAW_BULLETS
+    CALL    DRAW_ENEMY_BULLETS
+    CALL    DRAW_EXPLOSIONS
+    CALL    DRAW_HUD
+
     CALL    READ_INPUTS
 
     ; --- Wave timer ---
@@ -71,15 +80,17 @@ MAINLOOP:
     DEC     A : LD (WAVE_TIMER), A
     OR      A
     JR      NZ, .wave_wait
-    ; Timer loppui → spawn uusi aalto
+    ; Timer loppui → spawn uusi aalto (voi kestää useita frameja)
     CALL    SPAWN_WAVE
+
 .wave_wait:
     ; Pelaajat liikkuvat viiveen aikana, viholliset eivät
     CALL    UPDATE_PLAYERS
     CALL    UPDATE_BULLETS
+    CALL    UPDATE_ENEMY_BULLETS
     CALL    UPDATE_EXPLOSIONS
     CALL    UPDATE_SOUND
-    JR      .draw
+    JP      MAINLOOP
 
 .normal:
     ; Normaali pelitila
@@ -87,21 +98,16 @@ MAINLOOP:
     CALL    UPDATE_ENEMIES
     CALL    CHECK_PLAYER_DEATH
     CALL    UPDATE_BULLETS
+    CALL    UPDATE_ENEMY_BULLETS
     CALL    UPDATE_EXPLOSIONS
     CALL    UPDATE_SOUND
 
     ; Tarkista onko aalto valmis
     CALL    CHECK_WAVE_COMPLETE
-    JR      NZ, .draw
+    JP      NZ, MAINLOOP
     ; Kaikki viholliset tuhottu — seuraava taso
     LD      A, (LEVEL) : INC A : LD (LEVEL), A
     LD      A, 90 : LD (WAVE_TIMER), A    ; 1.5s viive
-
-.draw:
-    CALL    DRAW_ENEMIES
-    CALL    DRAW_BULLETS
-    CALL    DRAW_EXPLOSIONS
-    CALL    DRAW_HUD
     JP      MAINLOOP
 
 ; =============================================================================

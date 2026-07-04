@@ -90,6 +90,13 @@ HUD_DIRTY       EQU 0xC080      ; 1 = DRAW_HUD täytyy ajaa, 0 = ohita
 ; Bitti 0=RIGHT, 1=LEFT, 2=UP, 3=DOWN; 0=ei kelvollinen paikka
 NAVMAP          EQU 0xC100      ; 32*24=768 tavua (0xC100-0xC3FF)
 
+; Vihollisten ammukset
+ENEMY_BULLETS       EQU 0xC081      ; 6*4=24 tavua (0xC081-0xC098)
+ENEMY_BULLET_SIZE   EQU 4           ; X, Y, dir, active
+ENEMY_BULLET_PAT    EQU 48          ; sama pattern kuin pelaajan luodilla
+ENEMY_BULLET_COLOR  EQU 8           ; punainen
+ENEMY_BULLET_SPEED  EQU 2           ; puolet pelaajan luodin nopeudesta
+
 ; Räjähdykset
 EXPLOSIONS      EQU 0xC07A      ; 2*3=6 tavua RAM:issa (0xC060-0xC062 = SFX RAM)
 EXPL_SIZE       EQU 3

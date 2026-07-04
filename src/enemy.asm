@@ -83,10 +83,13 @@ INIT_ENEMIES:
     LD      B, WORRIT_PATS_END - WORRIT_PATS
 .pp:LD      A, (HL) : OUT (VDP_DATA), A : INC HL : DJNZ .pp
 
-    ; Nollaa kaikki
+    ; Nollaa viholliset ja niiden ammukset
     LD      HL, ENEMIES
     LD      B, MAX_ENEMIES * ENEMY_SIZE
 .clr:XOR    A : LD (HL), A : INC HL : DJNZ .clr
+    LD      HL, ENEMY_BULLETS
+    LD      B, MAX_ENEMIES * ENEMY_BULLET_SIZE
+.clrb:XOR   A : LD (HL), A : INC HL : DJNZ .clrb
 
     ; Luo 3 Worrittia
     LD      IX, ENEMIES
@@ -246,14 +249,19 @@ UPDATE_WORRIT:
 UPDATE_ENEMIES:
     LD      IX, ENEMIES
     LD      B, MAX_ENEMIES
+    LD      D, 0                    ; D = vihollisindeksi (0-5)
 .loop:
     PUSH    BC
+    PUSH    DE
     LD      A, (IX+4) : OR A : JR Z, .skip
     LD      A, (IX+3) : CP ENEMY_WORRIT : JR NZ, .skip
+    PUSH    DE
     CALL    UPDATE_WORRIT
+    POP     DE
+    LD      A, D : CALL ENEMY_TRY_SHOOT
 .skip:
-    LD      BC, ENEMY_SIZE
-    ADD     IX, BC
+    POP     DE : INC D
+    LD      BC, ENEMY_SIZE : ADD IX, BC
     POP     BC : DJNZ .loop
     RET
 
@@ -286,6 +294,202 @@ DRAW_ENEMIES:
     RET
 
 ; =============================================================================
+; ENEMY_TRY_SHOOT — yritä ampua viholliselta pelaajaan
+; Sisääntulo: IX = vihollisdata, A = vihollisindeksi (0-5)
+; Ampuu jos vihollinen on samalla rivillä tai sarakkeella kuin kohde (50% todennäköisyys)
+; Pariton indeksi → P1, parillinen → P2
+; =============================================================================
+ENEMY_TRY_SHOOT:
+    PUSH    BC
+    PUSH    DE
+    PUSH    HL
+
+    LD      E, A                    ; E = vihollisindeksi
+    ADD     A, A : ADD A, A         ; A = indeksi * 4
+    LD      HL, ENEMY_BULLETS
+    ADD     A, L : LD L, A          ; HL = &ENEMY_BULLETS[indeksi]
+    PUSH    HL : POP IY             ; IY = bullet-slotti
+
+    LD      A, (IY+3) : OR A : JR NZ, .done  ; jo aktiivinen → ei ammuta
+
+    ; Valitse kohde: yksinpelissä aina P1; kaksinpelissä pariton→P1, parillinen→P2
+    LD      A, (GAME_MODE) : CP 2 : JR NZ, .target_p1
+    LD      A, E : AND 1 : JR Z, .pick_p2
+.target_p1:
+    LD      A, (P1_X) : LD B, A
+    LD      A, (P1_Y) : LD C, A
+    JR      .check
+.pick_p2:
+    LD      A, (P2_X) : LD B, A
+    LD      A, (P2_Y) : LD C, A
+
+.check:
+    ; Sama rivi? |enemyY - targetY| < 4
+    LD      A, (IX+1) : SUB C
+    JP      P, .ry_ok
+    NEG
+.ry_ok:
+    CP      4 : JR C, .same_row
+
+    ; Sama sarake? |enemyX - targetX| < 4
+    LD      A, (IX+0) : SUB B
+    JP      P, .cx_ok
+    NEG
+.cx_ok:
+    CP      4 : JR NC, .done        ; ei linjassa
+
+    ; Sama sarake: ammu ylös tai alas
+    LD      A, C : CP (IX+1)
+    JR      NC, .col_down
+    LD      D, DIR_UP : JR .fire
+.col_down:
+    LD      D, DIR_DOWN : JR .fire
+
+.same_row:
+    ; Sama rivi: ammu vasemmalle tai oikealle
+    LD      A, B : CP (IX+0)
+    JR      NC, .row_right
+    LD      D, DIR_LEFT : JR .fire
+.row_right:
+    LD      D, DIR_RIGHT
+
+.fire:
+    LD      A, (IX+2) : CP D : JR NZ, .done  ; ammu vain jos liikkuu pelaajaa kohti
+    CALL    RAND : AND 1 : JR NZ, .done       ; 50% todennäköisyys
+
+    LD      A, (IX+0) : LD (IY+0), A       ; X
+    LD      A, (IX+1) : LD (IY+1), A       ; Y
+    LD      A, D        : LD (IY+2), A      ; suunta
+    LD      (IY+3), 1                        ; aktiivinen
+
+.done:
+    POP     HL
+    POP     DE
+    POP     BC
+    RET
+
+; =============================================================================
+; UPDATE_ENEMY_BULLETS — liikuta kaikki vihollisammukset
+; =============================================================================
+UPDATE_ENEMY_BULLETS:
+    LD      IX, ENEMY_BULLETS
+    LD      B, MAX_ENEMIES
+.loop:
+    PUSH    BC
+    CALL    UPDATE_ENEMY_BULLET
+    INC     IX : INC IX : INC IX : INC IX
+    POP     BC : DJNZ .loop
+    RET
+
+; UPDATE_ENEMY_BULLET — liikuta yksi vihollisammus
+; Sisääntulo: IX = bullet slot (X, Y, dir, active)
+UPDATE_ENEMY_BULLET:
+    LD      A, (IX+3) : OR A : RET Z        ; ei aktiivinen
+
+    LD      A, (IX+2)                        ; suunta
+    CP      DIR_UP : JR NZ, .ebu_nd
+    LD      A, (IX+1) : SUB ENEMY_BULLET_SPEED
+    JR      C, .ebu_deact
+    CP      8 : JR C, .ebu_deact
+    LD      (IX+1), A : JR .ebu_wall
+.ebu_nd:
+    CP      DIR_DOWN : JR NZ, .ebu_nl
+    LD      A, (IX+1) : ADD A, ENEMY_BULLET_SPEED
+    CP      153 : JR NC, .ebu_deact
+    LD      (IX+1), A : JR .ebu_wall
+.ebu_nl:
+    CP      DIR_LEFT : JR NZ, .ebu_nr
+    LD      A, (IX+0) : SUB ENEMY_BULLET_SPEED
+    JR      C, .ebu_deact
+    LD      (IX+0), A : JR .ebu_wall
+.ebu_nr:
+    LD      A, (IX+0) : ADD A, ENEMY_BULLET_SPEED
+    CP      241 : JR NC, .ebu_deact
+    LD      (IX+0), A
+.ebu_wall:
+    LD      A, (IX+0) : ADD A, 8 : LD B, A
+    LD      A, (IX+1) : ADD A, 8 : LD C, A
+    CALL    IS_WALL : JR NZ, .ebu_deact
+    CALL    CHECK_ENEMY_BULLET_PLAYER_HIT
+    RET
+.ebu_deact:
+    LD      (IX+3), 0
+    RET
+
+; CHECK_ENEMY_BULLET_PLAYER_HIT — tarkista osuuko vihollisammus pelaajaan
+; Sisääntulo: IX = bullet slot
+CHECK_ENEMY_BULLET_PLAYER_HIT:
+    PUSH    BC
+    PUSH    DE
+    LD      D, (IX+0) : LD E, (IX+1)    ; D=X, E=Y
+
+    ; Tarkista P1
+    LD      A, (P1_DEAD_TMR) : OR A : JR NZ, .chk_p2
+    LD      A, (P1_LIVES)    : OR A : JR Z, .chk_p2
+    LD      A, (P1_X) : SUB D
+    JP      P, .p1x
+    NEG
+.p1x:
+    CP      15 : JR NC, .chk_p2
+    LD      A, (P1_Y) : SUB E
+    JP      P, .p1y
+    NEG
+.p1y:
+    CP      15 : JR NC, .chk_p2
+    LD      (IX+3), 0
+    LD      A, (P1_LIVES) : DEC A : LD (P1_LIVES), A
+    LD      A, 1 : LD (HUD_DIRTY), A
+    LD      A, 60 : LD (P1_DEAD_TMR), A
+    CALL    SFX_ENEMY_DIE
+    JR      .ebph_done
+
+.chk_p2:
+    LD      A, (P2_DEAD_TMR) : OR A : JR NZ, .ebph_done
+    LD      A, (P2_LIVES)    : OR A : JR Z, .ebph_done
+    LD      A, (P2_X) : SUB D
+    JP      P, .p2x
+    NEG
+.p2x:
+    CP      15 : JR NC, .ebph_done
+    LD      A, (P2_Y) : SUB E
+    JP      P, .p2y
+    NEG
+.p2y:
+    CP      15 : JR NC, .ebph_done
+    LD      (IX+3), 0
+    LD      A, (P2_LIVES) : DEC A : LD (P2_LIVES), A
+    LD      A, 1 : LD (HUD_DIRTY), A
+    LD      A, 60 : LD (P2_DEAD_TMR), A
+    CALL    SFX_ENEMY_DIE
+.ebph_done:
+    POP     DE
+    POP     BC
+    RET
+
+; =============================================================================
+; DRAW_ENEMY_BULLETS — piirrä vihollisammukset (spritet 12-17)
+; =============================================================================
+DRAW_ENEMY_BULLETS:
+    LD      IX, ENEMY_BULLETS
+    LD      B, MAX_ENEMIES
+    LD      HL, VRAM_SPRITE_ATT + 48    ; sprite 12 alkaen
+    CALL    VDP_SETW
+.loop:
+    LD      A, (IX+3) : OR A : JR Z, .hide
+    LD      A, (IX+1) : DEC A : OUT (VDP_DATA), A
+    LD      A, (IX+0) : OUT (VDP_DATA), A
+    LD      A, ENEMY_BULLET_PAT   : OUT (VDP_DATA), A
+    LD      A, ENEMY_BULLET_COLOR : OUT (VDP_DATA), A
+    JR      .next
+.hide:
+    LD      A, 0xD8 : OUT (VDP_DATA), A
+    XOR     A : OUT (VDP_DATA), A : OUT (VDP_DATA), A : OUT (VDP_DATA), A
+.next:
+    INC     IX : INC IX : INC IX : INC IX
+    DJNZ    .loop
+    RET
+
+; =============================================================================
 ; CHECK_WAVE_COMPLETE — tarkista onko kaikki viholliset kuolleet
 ; Ulostulo: Z=1 jos kaikki kuolleet, Z=0 jos vielä elossa
 ; =============================================================================
@@ -307,10 +511,13 @@ CHECK_WAVE_COMPLETE:
 ; Level 1 = 3, Level 2 = 4, Level 3 = 5, Level 4+ = 6
 ; =============================================================================
 SPAWN_WAVE:
-    ; Nollaa kaikki viholliset
+    ; Nollaa viholliset ja niiden ammukset
     LD      HL, ENEMIES
     LD      B, MAX_ENEMIES * ENEMY_SIZE
 .clr:XOR    A : LD (HL), A : INC HL : DJNZ .clr
+    LD      HL, ENEMY_BULLETS
+    LD      B, MAX_ENEMIES * ENEMY_BULLET_SIZE
+.clrb:XOR   A : LD (HL), A : INC HL : DJNZ .clrb
 
     ; Laske montako: LEVEL + 2, max MAX_ENEMIES
     LD      A, (LEVEL)

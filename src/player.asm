@@ -185,32 +185,20 @@ UPDATE_PLAYERS:
     OR      A
     JR      Z, .p1_alive
     DEC     A : LD (P1_DEAD_TMR), A
-    ; Vilkuta: piilota joka toinen frame
-    AND     0x02
-    JR      Z, .p1_flash_hide
-    XOR     A : LD (P1_INPUT), A   ; staattinen frame vilkkuessa
-    CALL    DRAW_P1
-    JR      .p1_done_death
-.p1_flash_hide:
-    LD      HL, VRAM_SPRITE_ATT : CALL HIDE_SPRITE
-.p1_done_death:
     ; Jos ajastin juuri loppui (=0), respawnaa
-    LD      A, (P1_DEAD_TMR)
     OR      A
     JR      NZ, .p1_skip_move
-    LD      A, (P1_LIVES) : OR A : JR Z, .p1_skip_move  ; ei elämiä → pysyy piilossa
+    LD      A, (P1_LIVES) : OR A : JR Z, .p1_skip_move
     LD      A, P1_START_X : LD (P1_X), A
     LD      A, P1_START_Y : LD (P1_Y), A
     LD      A, DIR_RIGHT : LD (P1_DIR), A
-    CALL    DRAW_P1
 .p1_skip_move:
     XOR     A : LD (P1_INPUT), A
     JP      .p1_after_move
 .p1_alive:
-    ; Jos elämät = 0, piilota ja ohita
+    ; Jos elämät = 0, ohita
     LD      A, (P1_LIVES) : OR A : JR NZ, .p1_has_lives
-    LD      HL, VRAM_SPRITE_ATT : CALL HIDE_SPRITE
-    XOR     A : LD (P1_INPUT), A     ; estä ampuminen
+    XOR     A : LD (P1_INPUT), A
     JP      .p1_after_move
 .p1_has_lives:
     LD      A, (P1_INPUT) : AND IN_UP : JR Z, .p1nu
@@ -261,7 +249,6 @@ UPDATE_PLAYERS:
     LD      A, E : LD (P1_X), A : LD A, D : LD (P1_Y), A
     LD      A, DIR_RIGHT : LD (P1_DIR), A
 .p1nr:
-    CALL    DRAW_P1
 .p1_after_move:
 
     ; --- P2 ---
@@ -269,28 +256,17 @@ UPDATE_PLAYERS:
     OR      A
     JR      Z, .p2_alive
     DEC     A : LD (P2_DEAD_TMR), A
-    AND     0x02
-    JR      Z, .p2_flash_hide
-    XOR     A : LD (P2_INPUT), A
-    CALL    DRAW_P2
-    JR      .p2_done_death
-.p2_flash_hide:
-    LD      HL, VRAM_SPRITE_ATT + 4 : CALL HIDE_SPRITE
-.p2_done_death:
-    LD      A, (P2_DEAD_TMR)
     OR      A
     JR      NZ, .p2_skip_move
     LD      A, (P2_LIVES) : OR A : JR Z, .p2_skip_move
     LD      A, P2_START_X : LD (P2_X), A
     LD      A, P2_START_Y : LD (P2_Y), A
     LD      A, DIR_LEFT  : LD (P2_DIR), A
-    CALL    DRAW_P2
 .p2_skip_move:
     XOR     A : LD (P2_INPUT), A
     JP      .p2_after_move
 .p2_alive:
     LD      A, (P2_LIVES) : OR A : JR NZ, .p2_has_lives
-    LD      HL, VRAM_SPRITE_ATT + 4 : CALL HIDE_SPRITE
     XOR     A : LD (P2_INPUT), A
     JP      .p2_after_move
 .p2_has_lives:
@@ -338,8 +314,35 @@ UPDATE_PLAYERS:
     LD      A, E : LD (P2_X), A : LD A, D : LD (P2_Y), A
     LD      A, DIR_RIGHT : LD (P2_DIR), A
 .p2nr:
-    CALL    DRAW_P2
 .p2_after_move:
+    RET
+
+; DRAW_PLAYERS — piirrä P1 ja P2 (kutsutaan heti vblankin jälkeen)
+DRAW_PLAYERS:
+    ; --- P1 ---
+    LD      A, (P1_DEAD_TMR) : OR A : JR Z, .p1_not_dead
+    AND     0x02 : JR Z, .p1_hide
+    CALL    DRAW_P1 : JR .p1_done
+.p1_hide:
+    LD      HL, VRAM_SPRITE_ATT : CALL HIDE_SPRITE : JR .p1_done
+.p1_not_dead:
+    LD      A, (P1_LIVES) : OR A : JR NZ, .p1_draw
+    LD      HL, VRAM_SPRITE_ATT : CALL HIDE_SPRITE : JR .p1_done
+.p1_draw:
+    CALL    DRAW_P1
+.p1_done:
+    ; --- P2 ---
+    LD      A, (P2_DEAD_TMR) : OR A : JR Z, .p2_not_dead
+    AND     0x02 : JR Z, .p2_hide
+    CALL    DRAW_P2 : JR .p2_done
+.p2_hide:
+    LD      HL, VRAM_SPRITE_ATT + 4 : CALL HIDE_SPRITE : JR .p2_done
+.p2_not_dead:
+    LD      A, (P2_LIVES) : OR A : JR NZ, .p2_draw
+    LD      HL, VRAM_SPRITE_ATT + 4 : CALL HIDE_SPRITE : JR .p2_done
+.p2_draw:
+    CALL    DRAW_P2
+.p2_done:
     RET
 
 ; =============================================================================
