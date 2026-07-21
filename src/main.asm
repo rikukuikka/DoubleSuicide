@@ -20,6 +20,7 @@ ROM_HEADER:
     INCLUDE "src/sound.asm"
     INCLUDE "src/hud.asm"
     INCLUDE "src/title.asm"
+    INCLUDE "src/gameover.asm"
 
 INIT:
     DI
@@ -51,6 +52,11 @@ INIT:
     LD      A, 1 : LD (LEVEL), A
     XOR     A : LD (WAVE_TIMER), A
     LD      A, 1 : LD (HUD_DIRTY), A   ; DRAW_MAZE ylikirjoitti rivin 23
+    ; Tyhjennä sprite attribute table — title screen saattaa jättää stray-spritejä
+    LD      HL, VRAM_SPRITE_ATT
+    LD      BC, 128
+    LD      A, 0xD8
+    CALL    VDP_FILL
     CALL    WAIT_VBLANK                 ; synkronoi VDP-kirjoitus vblankiin
     CALL    DRAW_HUD
 
@@ -97,6 +103,7 @@ MAINLOOP:
     CALL    UPDATE_PLAYERS
     CALL    UPDATE_ENEMIES
     CALL    CHECK_PLAYER_DEATH
+    CALL    CHECK_GAME_OVER
     CALL    UPDATE_BULLETS
     CALL    UPDATE_ENEMY_BULLETS
     CALL    UPDATE_EXPLOSIONS

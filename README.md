@@ -41,6 +41,7 @@ openmsx -machine C-BIOS_MSX1 -cart build/DoubleSuicide.rom -joytype1 keys
 - **PSG-ääni** — kanava A: ampuminen, kanava B: räjähdys, kanava C: taustamusiikki (sahalaita-envelope)
 - **Pelaajan kuolema** — vihollisen kosketus tai ammus tappaa, vilkkumisanimaatio, respawn aloituspaikassa
 - **3 elämää** per pelaaja, peli loppuu kun elämät = 0
+- **Game over -ruutu** — 144×52 px kuva ladataan bank 1:een, kaikkien pelaajien kuoltua; tulinäppäimen vapautus palaa otsikkoruutuun
 - **Aaltojärjestelmä** — uusi aalto syntyy kun kaikki viholliset tuhottu, 1.5s viive välissä
 - **Vaikeustason nousu** — vihollisten määrä kasvaa: 3 → 4 → 5 → 6 (max)
 - **HUD** — pisteet (BCD, 100 per tappo), elämät ja värikoodatut pelaajaikonit alarivillä
@@ -60,6 +61,7 @@ openmsx -machine C-BIOS_MSX1 -cart build/DoubleSuicide.rom -joytype1 keys
 | `sound.asm`     | PSG AY-3-8910 taustamusiikki + ääniefektit                    |
 | `hud.asm`       | Numerotileet, pisteet, elämänäyttö                            |
 | `title.asm`     | Otsikkoruutu, logo, 1P/2P-valinta                             |
+| `gameover.asm`  | Game over -ruutu, CHECK_GAME_OVER, kuvatile-data (bank 1)     |
 
 ## Tekniset yksityiskohdat
 
@@ -119,6 +121,5 @@ openmsx -machine C-BIOS_MSX1 -cart build/DoubleSuicide.rom -joytype1 keys
 ## TODO
 
 - [ ] Lisää vihollistyyppejä (Garwor, Thorwar, Worluk, Wizard)
-- [ ] Game over -ruutu
 - [ ] Useampia kenttälayouteja
 - [ ] Vihollisten nopeuden kasvu tasojen myötä
