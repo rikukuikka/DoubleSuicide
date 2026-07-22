@@ -70,6 +70,37 @@ GAME_OVER_SCREEN:
     LD      BC, 32 : ADD HL, BC   ; seuraava rivi
     POP     BC : DJNZ .drow
 
+    ; --- Näytä pisteet ---
+    ; Kirjoitetaan vblankin aikana (sama kuin DRAW_HUD) — TMS9918A vaatii
+    ; riittävän viiveen kirjoitusten välillä; silmukka+taulukko antaa ~37 sykliä/tavu.
+    CALL    WAIT_VBLANK
+    ; P1 SCORE riville 15 (sarake 9)
+    LD      HL, 0x1800 + 15*32 + 9 : CALL VDP_SETW
+    LD      HL, .go_hdr_p1
+    LD      B, 9
+.go_h1: LD  A, (HL) : OUT (VDP_DATA), A : INC HL : DJNZ .go_h1
+    LD      A, (P1_SCORE_H)
+    RRCA : RRCA : RRCA : RRCA : AND 0x0F : ADD A, 2 : OUT (VDP_DATA), A
+    LD      A, (P1_SCORE_H) : AND 0x0F : ADD A, 2 : OUT (VDP_DATA), A
+    LD      A, (P1_SCORE_L)
+    RRCA : RRCA : RRCA : RRCA : AND 0x0F : ADD A, 2 : OUT (VDP_DATA), A
+    LD      A, (P1_SCORE_L) : AND 0x0F : ADD A, 2 : OUT (VDP_DATA), A
+    ; P2 SCORE riville 17
+    LD      HL, 0x1800 + 17*32 + 9 : CALL VDP_SETW
+    LD      HL, .go_hdr_p2
+    LD      B, 9
+.go_h2: LD  A, (HL) : OUT (VDP_DATA), A : INC HL : DJNZ .go_h2
+    LD      A, (P2_SCORE_H)
+    RRCA : RRCA : RRCA : RRCA : AND 0x0F : ADD A, 2 : OUT (VDP_DATA), A
+    LD      A, (P2_SCORE_H) : AND 0x0F : ADD A, 2 : OUT (VDP_DATA), A
+    LD      A, (P2_SCORE_L)
+    RRCA : RRCA : RRCA : RRCA : AND 0x0F : ADD A, 2 : OUT (VDP_DATA), A
+    LD      A, (P2_SCORE_L) : AND 0x0F : ADD A, 2 : OUT (VDP_DATA), A
+    JR      .go_scores_done
+.go_hdr_p1: DB 29, 3, 0, 32, 16, 28, 31, 18, 0  ; P 1 _ S C O R E _
+.go_hdr_p2: DB 29, 4, 0, 32, 16, 28, 31, 18, 0  ; P 2 _ S C O R E _
+.go_scores_done:
+
     ; Odota hetki ennen syÃ¶tteen lukemista (60 framea = ~1s)
     LD      B, 60
 .delay:
