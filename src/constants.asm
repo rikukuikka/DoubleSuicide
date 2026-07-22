@@ -8,7 +8,7 @@ VDP_REG     EQU 0x99
 
 ; PSG portit (joystick)
 PSG_REG     EQU 0xA0
-PSG_REG15     EQU 0xA1
+PSG_REG15   EQU 0xA1
 PSG_READ    EQU 0xA2
 PSG_P1      EQU 0x8F
 PSG_P2      EQU 0x40
@@ -96,6 +96,10 @@ ENEMY_BULLET_SIZE   EQU 4           ; X, Y, dir, active
 ENEMY_BULLET_PAT    EQU 48          ; sama pattern kuin pelaajan luodilla
 ENEMY_BULLET_COLOR  EQU 8           ; punainen
 ENEMY_BULLET_SPEED  EQU 2           ; puolet pelaajan luodin nopeudesta
+
+; Tankin ammukset (2 suuntaa yhtä aikaa)
+TANK_BULLETS        EQU 0xC099      ; 2*4=8 tavua (0xC099-0xC0A0)
+TANK_BULLET_COLOR   EQU 13          ; magenta, sama kuin tankki
 
 ; Räjähdykset
 EXPLOSIONS      EQU 0xC07A      ; 2*3=6 tavua RAM:issa (0xC060-0xC062 = SFX RAM)

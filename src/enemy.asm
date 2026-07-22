@@ -12,6 +12,7 @@
 
 ENEMY_NONE      EQU 0
 ENEMY_WORRIT    EQU 1
+ENEMY_TANK      EQU 2
 ENEMY_SIZE      EQU 8
 MAX_ENEMIES     EQU 6
 
@@ -19,6 +20,7 @@ ENEMIES         EQU 0xC010      ; 6*8=48 tavua RAM:issa
 RAND_SEED       EQU 0xC040      ; 2 tavua
 
 WORRIT_COLOR    EQU 10          ; keltainen
+TANK_COLOR      EQU 13          ; magenta
 
 WORRIT_PATS:
     ; 16x16 Worrit (pattern 8 = offset 64, yksi frame)
@@ -45,9 +47,26 @@ WORRIT_PATS:
 
 WORRIT_PATS_END:
 
+TANK_PATS:
+
+    ; Oikea ja vasen
+    DB $00,$00,$01,$06,$CE,$FF,$CA,$0A
+    DB $7F,$CD,$B5,$B5,$CD,$7F,$00,$00
+    DB $00,$00,$80,$60,$73,$FF,$53,$50
+    DB $FE,$B3,$AD,$AD,$B3,$FE,$00,$00
+    ; Alas ja ylös
+    DB $1E,$33,$2D,$2D,$33,$3F,$21,$3F
+    DB $3F,$21,$3F,$33,$2D,$2D,$33,$1E
+    DB $70,$70,$20,$20,$F0,$38,$F8,$24
+    DB $24,$F8,$38,$F0,$20,$20,$70,$70
+
+TANK_PATS_END:
+
     ALIGN   4
 WORRIT_DIR_PAT:
     DB 32, 36, 44, 40   ; DIR_RIGHT=0, DIR_LEFT=1, DIR_UP=2, DIR_DOWN=3
+TANK_DIR_PAT:
+    DB 60, 60, 64, 64   ; vaaka sama sprite molemmille suunnille, sama pystylle
 
 ; =============================================================================
 ; RAND — 16-bit LFSR satunnaisluku, ulostulo A
@@ -77,11 +96,16 @@ INIT_ENEMIES:
     ; Alusta LFSR siemen
     LD      HL, 0xACE1 : LD (RAND_SEED), HL
 
-    ; Lataa sprite patternit (pattern 4 alkaen)
-    LD      HL, VRAM_SPRITE_PAT + 256 : CALL VDP_SETW  ; 16x16: pelaaja vie 256 tavua (4 suuntaa × 2 framea)
+    ; Lataa Worrit-patternit (pattern 32 = offset 256)
+    LD      HL, VRAM_SPRITE_PAT + 256 : CALL VDP_SETW
     LD      HL, WORRIT_PATS
     LD      B, WORRIT_PATS_END - WORRIT_PATS
 .pp:LD      A, (HL) : OUT (VDP_DATA), A : INC HL : DJNZ .pp
+    ; Lataa Tank-patternit (pattern 60 = offset 480, bullet/explosion jälkeen)
+    LD      HL, VRAM_SPRITE_PAT + 480 : CALL VDP_SETW
+    LD      HL, TANK_PATS
+    LD      B, TANK_PATS_END - TANK_PATS
+.tp:LD      A, (HL) : OUT (VDP_DATA), A : INC HL : DJNZ .tp
 
     ; Nollaa viholliset ja niiden ammukset
     LD      HL, ENEMIES
@@ -90,10 +114,13 @@ INIT_ENEMIES:
     LD      HL, ENEMY_BULLETS
     LD      B, MAX_ENEMIES * ENEMY_BULLET_SIZE
 .clrb:XOR   A : LD (HL), A : INC HL : DJNZ .clrb
+    LD      HL, TANK_BULLETS
+    LD      B, 2 * ENEMY_BULLET_SIZE
+.clrt:XOR   A : LD (HL), A : INC HL : DJNZ .clrt
 
-    ; Luo 3 Worrittia
+    ; Luo 1 tankki + 2 Worrittia
     LD      IX, ENEMIES
-    CALL    SPAWN_WORRIT
+    CALL    SPAWN_TANK
     LD      IX, ENEMIES + ENEMY_SIZE
     CALL    SPAWN_WORRIT
     LD      IX, ENEMIES + ENEMY_SIZE*2
@@ -130,6 +157,28 @@ SPAWN_WORRIT:
 .found:
     CALL    RAND : AND 0x03 : LD (IX+2), A   ; satunnainen suunta
     LD      (IX+3), ENEMY_WORRIT
+    LD      (IX+4), 1
+    RET
+
+; SPAWN_TANK — luo Tankki IX-osoitteeseen satunnaiseen vapaaseen paikkaan
+SPAWN_TANK:
+    LD      B, 64
+.try:
+    PUSH    BC
+    CALL    RAND : AND 0xF0 : LD (IX+0), A
+    CALL    RAND : AND 0x70 : ADD A, 16 : LD (IX+1), A
+    LD      B, (IX+0) : LD C, (IX+1) : CALL IS_WALL : JR NZ, .bad
+    LD      A, (IX+0) : ADD A, 15 : LD B, A : LD C, (IX+1) : CALL IS_WALL : JR NZ, .bad
+    LD      B, (IX+0) : LD A, (IX+1) : ADD A, 15 : LD C, A : CALL IS_WALL : JR NZ, .bad
+    LD      A, (IX+0) : ADD A, 15 : LD B, A : LD A, (IX+1) : ADD A, 15 : LD C, A : CALL IS_WALL : JR NZ, .bad
+    POP     BC : JR .found
+.bad:
+    POP     BC : DJNZ .try
+    LD      A, 112 : LD (IX+0), A
+    LD      A, 80  : LD (IX+1), A
+.found:
+    LD      (IX+2), DIR_RIGHT
+    LD      (IX+3), ENEMY_TANK
     LD      (IX+4), 1
     RET
 
@@ -244,6 +293,245 @@ UPDATE_WORRIT:
     RET
 
 ; =============================================================================
+; TANK_TOWARD_PLAYER — palauttaa A = suunta kohti elossaolevaa pelaajaa
+; Käyttää: B, C, D, E, H, L. Säilyttää: IX, alkuperäiset D, E.
+; =============================================================================
+TANK_TOWARD_PLAYER:
+    PUSH    DE
+    PUSH    HL
+
+    LD      A, (P1_DEAD_TMR) : OR A : JR NZ, .ttp2
+    LD      A, (P1_LIVES)    : OR A : JR Z, .ttp2
+    LD      A, (P1_X) : LD B, A : LD A, (P1_Y) : LD C, A
+    JR      .ttp_got
+.ttp2:
+    LD      A, (P2_DEAD_TMR) : OR A : JR NZ, .ttp_nopl
+    LD      A, (P2_LIVES)    : OR A : JR Z, .ttp_nopl
+    LD      A, (P2_X) : LD B, A : LD A, (P2_Y) : LD C, A
+    JR      .ttp_got
+.ttp_nopl:
+    LD      A, (IX+2)   ; ei elossaolevia pelaajia: pidä nykyinen suunta
+    POP     HL : POP DE : RET
+
+.ttp_got:
+    ; Laske |dx| ja vaakasuuntainen preferenssi
+    LD      A, B : SUB (IX+0)   ; dx = targetX - tankX (allekirjoitettu)
+    JP      P, .ttp_dxp
+    NEG : LD H, A : LD D, DIR_LEFT  : JR .ttp_dxd
+.ttp_dxp:
+    LD      H, A : LD D, DIR_RIGHT
+.ttp_dxd:
+    ; Laske |dy| ja pystysuuntainen preferenssi
+    LD      A, C : SUB (IX+1)   ; dy = targetY - tankY (allekirjoitettu)
+    JP      P, .ttp_dyp
+    NEG : LD E, A : LD L, DIR_UP   : JR .ttp_dyd
+.ttp_dyp:
+    LD      E, A : LD L, DIR_DOWN
+.ttp_dyd:
+    LD      A, E : CP H          ; |dy| vs |dx|
+    JR      NC, .ttp_vert        ; |dy| >= |dx|: preferoi pystyä
+    LD      A, D : JR .ttp_done  ; preferoi vaakaa
+.ttp_vert:
+    LD      A, L
+.ttp_done:
+    POP     HL : POP DE : RET
+
+; =============================================================================
+; UPDATE_TANK — liikuta yksi tankki pelaajaa kohti (IX = data)
+; =============================================================================
+UPDATE_TANK:
+    LD      A, (IX+2) : LD D, A     ; D = suunta
+
+    CP      DIR_UP : JR NZ, .tnup
+    LD      A, (IX+1) : SUB ENEMY_SPEED : CP 8 : JP C, .tchg
+    LD      E, A
+    LD      B, (IX+0) : LD C, E : CALL IS_WALL : JP NZ, .tchg
+    LD      A, (IX+0) : ADD A, 15 : LD B, A : LD C, E : CALL IS_WALL : JP NZ, .tchg
+    LD      (IX+1), E : JP .tmt
+.tnup:
+    CP      DIR_DOWN : JR NZ, .tndn
+    LD      A, (IX+1) : ADD A, ENEMY_SPEED : CP 153 : JP NC, .tchg
+    LD      E, A
+    LD      B, (IX+0) : LD A, E : ADD A, 15 : LD C, A : CALL IS_WALL : JP NZ, .tchg
+    LD      A, (IX+0) : ADD A, 15 : LD B, A : LD A, E : ADD A, 15 : LD C, A : CALL IS_WALL : JP NZ, .tchg
+    LD      (IX+1), E : JP .tmt
+.tndn:
+    CP      DIR_LEFT : JR NZ, .tnlt
+    LD      A, (IX+0) : SUB ENEMY_SPEED : JP C, .tchg
+    LD      E, A
+    LD      B, E : LD C, (IX+1) : CALL IS_WALL : JP NZ, .tchg
+    LD      B, E : LD A, (IX+1) : ADD A, 15 : LD C, A : CALL IS_WALL : JP NZ, .tchg
+    LD      (IX+0), E : JP .tmt
+.tnlt:
+    LD      A, (IX+0) : ADD A, ENEMY_SPEED : CP 241 : JP NC, .tchg
+    LD      E, A
+    LD      A, E : ADD A, 15 : LD B, A : LD C, (IX+1) : CALL IS_WALL : JP NZ, .tchg
+    LD      A, E : ADD A, 15 : LD B, A : LD A, (IX+1) : ADD A, 15 : LD C, A : CALL IS_WALL : JP NZ, .tchg
+    LD      (IX+0), E
+
+.tmt:
+    ; Grid-raja: käänny pelaajaa kohti NAVMAP:in avulla — ei taaksepäin
+    LD      A, (IX+0) : AND 0x07 : RET NZ
+    LD      A, (IX+1) : AND 0x07 : RET NZ
+    CALL    TANK_TOWARD_PLAYER   ; A = preferred direction
+    LD      D, A
+    ; Suodata: käänny vain jos preferenssi on kohtisuora nykyiseen akseliin
+    LD      A, (IX+2) : AND 0x02
+    LD      B, A
+    LD      A, D : AND 0x02
+    CP      B : RET Z            ; sama akseli → jatka suoraan
+    ; NAVMAP-haku
+    LD      A, (IX+1) : SRL A : SRL A : SRL A
+    LD      H, 0 : LD L, A
+    ADD     HL, HL : ADD HL, HL : ADD HL, HL : ADD HL, HL : ADD HL, HL
+    LD      A, (IX+0) : SRL A : SRL A : SRL A
+    ADD     A, L : LD L, A
+    LD      A, L : ADD A, LOW NAVMAP : LD L, A
+    LD      A, H : ADC A, HIGH NAVMAP : LD H, A
+    LD      A, (HL)
+    LD      B, A             ; B = saatavilla olevat suunnat (NAVMAP-bitit)
+    ; Onko preferenssisuunta D auki? (bit D = bitti suuntanumerolla)
+    LD      A, D : CP DIR_LEFT : JR C, .tmt_r
+    CP      DIR_UP   : JR C, .tmt_l
+    CP      DIR_DOWN : JR C, .tmt_u
+    BIT     3, B : RET Z : LD (IX+2), D : RET   ; DOWN
+.tmt_u:
+    BIT     2, B : RET Z : LD (IX+2), D : RET   ; UP
+.tmt_l:
+    BIT     1, B : RET Z : LD (IX+2), D : RET   ; LEFT
+.tmt_r:
+    BIT     0, B : RET Z : LD (IX+2), D : RET   ; RIGHT
+
+.tchg:
+    ; Seinä edessä — laske suunta pelaajaa kohti ja kokeile sitä
+    CALL    TANK_TOWARD_PLAYER
+    LD      D, A
+
+.ttry:
+    ; Kokeile suuntaa D — tarkista MOLEMMAT kulmat (sama kuin pääliikuntakoodi)
+    LD      A, D : CP DIR_UP : JR NZ, .ttu_nd
+    LD      A, (IX+1) : SUB ENEMY_SPEED : CP 8 : JP C, .talt
+    LD      E, A
+    LD      B, (IX+0) : LD C, E : CALL IS_WALL : JP NZ, .talt
+    LD      A, (IX+0) : ADD A, 15 : LD B, A : LD C, E : CALL IS_WALL : JP NZ, .talt
+    LD      (IX+2), D : RET
+.ttu_nd:
+    CP      DIR_DOWN : JR NZ, .ttu_nl
+    LD      A, (IX+1) : ADD A, ENEMY_SPEED : CP 153 : JP NC, .talt
+    LD      E, A
+    LD      B, (IX+0) : LD A, E : ADD A, 15 : LD C, A : CALL IS_WALL : JP NZ, .talt
+    LD      A, (IX+0) : ADD A, 15 : LD B, A : LD A, E : ADD A, 15 : LD C, A : CALL IS_WALL : JP NZ, .talt
+    LD      (IX+2), D : RET
+.ttu_nl:
+    CP      DIR_LEFT : JR NZ, .ttu_nr
+    LD      A, (IX+0) : SUB ENEMY_SPEED : JP C, .talt
+    LD      E, A
+    LD      B, E : LD C, (IX+1) : CALL IS_WALL : JP NZ, .talt
+    LD      B, E : LD A, (IX+1) : ADD A, 15 : LD C, A : CALL IS_WALL : JP NZ, .talt
+    LD      (IX+2), D : RET
+.ttu_nr:
+    LD      A, (IX+0) : ADD A, ENEMY_SPEED : CP 241 : JP NC, .talt
+    LD      E, A
+    LD      A, E : ADD A, 15 : LD B, A : LD C, (IX+1) : CALL IS_WALL : JP NZ, .talt
+    LD      A, E : ADD A, 15 : LD B, A : LD A, (IX+1) : ADD A, 15 : LD C, A : CALL IS_WALL : JP NZ, .talt
+    LD      (IX+2), D : RET
+
+.talt:
+    ; Preferenssisuunta tukossa — kokeile satunnaisia
+    LD      B, 12
+.trand:
+    PUSH    BC
+    CALL    RAND : AND 0x03 : LD D, A
+    CP      DIR_UP : JR NZ, .tr_nd
+    LD      A, (IX+1) : SUB ENEMY_SPEED : CP 8 : JR C, .tr_bad
+    LD      E, A : LD B, (IX+0) : LD C, E : CALL IS_WALL : JR NZ, .tr_bad
+    JR      .tr_ok
+.tr_nd:
+    CP      DIR_DOWN : JR NZ, .tr_nl
+    LD      A, (IX+1) : ADD A, ENEMY_SPEED : CP 153 : JR NC, .tr_bad
+    LD      E, A : LD B, (IX+0) : LD A, E : ADD A, 15 : LD C, A : CALL IS_WALL : JR NZ, .tr_bad
+    JR      .tr_ok
+.tr_nl:
+    CP      DIR_LEFT : JR NZ, .tr_nr
+    LD      A, (IX+0) : SUB ENEMY_SPEED : JR C, .tr_bad
+    LD      E, A : LD B, E : LD A, (IX+1) : ADD A, 8 : LD C, A : CALL IS_WALL : JR NZ, .tr_bad
+    JR      .tr_ok
+.tr_nr:
+    LD      A, (IX+0) : ADD A, ENEMY_SPEED : CP 241 : JR NC, .tr_bad
+    LD      E, A : LD A, E : ADD A, 15 : LD B, A
+    LD      A, (IX+1) : ADD A, 8 : LD C, A : CALL IS_WALL : JR NZ, .tr_bad
+.tr_ok:
+    LD      (IX+2), D
+    POP     BC : RET
+.tr_bad:
+    POP     BC : DJNZ .trand
+    RET
+
+; =============================================================================
+; TANK_TRY_SHOOT — ampuu molempiin suuntiin kun samalla rivillä/sarakkeella
+; Sisääntulo: IX = tankki-data
+; =============================================================================
+TANK_TRY_SHOOT:
+    PUSH    BC
+    PUSH    DE
+    PUSH    HL
+
+    ; Etsi elossaoleva pelaaja (B=X, C=Y)
+    LD      A, (P1_DEAD_TMR) : OR A : JR NZ, .tts_p2
+    LD      A, (P1_LIVES)    : OR A : JR Z,  .tts_p2
+    LD      A, (P1_X) : LD B, A : LD A, (P1_Y) : LD C, A
+    JR      .tts_chk
+.tts_p2:
+    LD      A, (P2_DEAD_TMR) : OR A : JR NZ, .tts_done
+    LD      A, (P2_LIVES)    : OR A : JR Z,  .tts_done
+    LD      A, (P2_X) : LD B, A : LD A, (P2_Y) : LD C, A
+
+.tts_chk:
+    ; Ampumaakseli = tankin liikkumasuunnan akseli (ei pelaajan sijainnista)
+    LD      A, (IX+2) : AND 0x02   ; 0=vaaka, 2=pysty
+    JR      NZ, .tts_vert_axis
+
+    ; Vaaka-akseli (RIGHT/LEFT): ammu vain jos samalla rivillä
+    LD      A, (IX+1) : SUB C
+    JP      P, .tts_ry
+    NEG
+.tts_ry:
+    CP      4 : JR NC, .tts_done
+    CALL    RAND : AND 1 : JR NZ, .tts_done
+    LD      E, DIR_LEFT : LD D, DIR_RIGHT
+    JR      .tts_fire
+
+.tts_vert_axis:
+    ; Pysty-akseli (UP/DOWN): ammu vain jos samassa sarakkeessa
+    LD      A, (IX+0) : SUB B
+    JP      P, .tts_cx
+    NEG
+.tts_cx:
+    CP      4 : JR NC, .tts_done
+    CALL    RAND : AND 1 : JR NZ, .tts_done
+    LD      E, DIR_UP : LD D, DIR_DOWN
+
+.tts_fire:
+    ; E = ensimmäinen suunta, D = toinen suunta
+    LD      HL, TANK_BULLETS + 3       ; slot 0 active-lippu
+    LD      A, (HL) : OR A : JR NZ, .tts_b1
+    DEC     HL : DEC HL : DEC HL
+    LD      A, (IX+0) : LD (HL), A : INC HL
+    LD      A, (IX+1) : LD (HL), A : INC HL
+    LD      A, E : LD (HL), A : INC HL : LD (HL), 1
+.tts_b1:
+    LD      HL, TANK_BULLETS + 7       ; slot 1 active-lippu
+    LD      A, (HL) : OR A : JR NZ, .tts_done
+    DEC     HL : DEC HL : DEC HL
+    LD      A, (IX+0) : LD (HL), A : INC HL
+    LD      A, (IX+1) : LD (HL), A : INC HL
+    LD      A, D : LD (HL), A : INC HL : LD (HL), 1
+
+.tts_done:
+    POP     HL : POP DE : POP BC
+    RET
+
+; =============================================================================
 ; UPDATE_ENEMIES — päivitä kaikki viholliset
 ; =============================================================================
 UPDATE_ENEMIES:
@@ -254,11 +542,15 @@ UPDATE_ENEMIES:
     PUSH    BC
     PUSH    DE
     LD      A, (IX+4) : OR A : JR Z, .skip
-    LD      A, (IX+3) : CP ENEMY_WORRIT : JR NZ, .skip
-    PUSH    DE
-    CALL    UPDATE_WORRIT
-    POP     DE
+    LD      A, (IX+3)
+    CP      ENEMY_WORRIT : JR NZ, .chk_tank
+    PUSH    DE : CALL UPDATE_WORRIT : POP DE
     LD      A, D : CALL ENEMY_TRY_SHOOT
+    JR      .skip
+.chk_tank:
+    CP      ENEMY_TANK : JR NZ, .skip
+    PUSH    DE : CALL UPDATE_TANK : POP DE
+    CALL    TANK_TRY_SHOOT
 .skip:
     POP     DE : INC D
     LD      BC, ENEMY_SIZE : ADD IX, BC
@@ -277,11 +569,17 @@ DRAW_ENEMIES:
 
 .loop:
     LD      A, (IX+4) : OR A : JR Z, .hide
-    LD      A, (IX+1) : DEC A : OUT (VDP_DATA), A
-    LD      A, (IX+0) : OUT (VDP_DATA), A
+    LD      A, (IX+1) : DEC A : OUT (VDP_DATA), A    ; Y
+    LD      A, (IX+0) : OUT (VDP_DATA), A              ; X
+    LD      A, (IX+3) : CP ENEMY_TANK : JR Z, .dtank
     LD      HL, WORRIT_DIR_PAT : LD A, (IX+2) : ADD A, L : LD L, A : LD A, (HL)
     OUT     (VDP_DATA), A
     LD      A, WORRIT_COLOR : OUT (VDP_DATA), A
+    JR      .next
+.dtank:
+    LD      HL, TANK_DIR_PAT : LD A, (IX+2) : ADD A, L : LD L, A : LD A, (HL)
+    OUT     (VDP_DATA), A
+    LD      A, TANK_COLOR : OUT (VDP_DATA), A
     JR      .next
 
 .hide:
@@ -490,6 +788,42 @@ DRAW_ENEMY_BULLETS:
     RET
 
 ; =============================================================================
+; UPDATE_TANK_BULLETS — liikuta tankin 2 ammusta (reuse UPDATE_ENEMY_BULLET)
+; =============================================================================
+UPDATE_TANK_BULLETS:
+    LD      IX, TANK_BULLETS
+    LD      B, 2
+.loop:
+    PUSH    BC
+    CALL    UPDATE_ENEMY_BULLET
+    INC     IX : INC IX : INC IX : INC IX
+    POP     BC : DJNZ .loop
+    RET
+
+; =============================================================================
+; DRAW_TANK_BULLETS — piirrä tankin ammukset (spritet 18-19)
+; =============================================================================
+DRAW_TANK_BULLETS:
+    LD      IX, TANK_BULLETS
+    LD      B, 2
+    LD      HL, VRAM_SPRITE_ATT + 72   ; sprite 18 alkaen
+    CALL    VDP_SETW
+.loop:
+    LD      A, (IX+3) : OR A : JR Z, .hide
+    LD      A, (IX+1) : DEC A : OUT (VDP_DATA), A
+    LD      A, (IX+0) : OUT (VDP_DATA), A
+    LD      A, ENEMY_BULLET_PAT   : OUT (VDP_DATA), A
+    LD      A, TANK_BULLET_COLOR  : OUT (VDP_DATA), A
+    JR      .next
+.hide:
+    LD      A, 0xD8 : OUT (VDP_DATA), A
+    XOR     A : OUT (VDP_DATA), A : OUT (VDP_DATA), A : OUT (VDP_DATA), A
+.next:
+    INC     IX : INC IX : INC IX : INC IX
+    DJNZ    .loop
+    RET
+
+; =============================================================================
 ; CHECK_WAVE_COMPLETE — tarkista onko kaikki viholliset kuolleet
 ; Ulostulo: Z=1 jos kaikki kuolleet, Z=0 jos vielä elossa
 ; =============================================================================
@@ -511,13 +845,16 @@ CHECK_WAVE_COMPLETE:
 ; Level 1 = 3, Level 2 = 4, Level 3 = 5, Level 4+ = 6
 ; =============================================================================
 SPAWN_WAVE:
-    ; Nollaa viholliset ja niiden ammukset
+    ; Nollaa viholliset ja niiden ammukset (myös tankin)
     LD      HL, ENEMIES
     LD      B, MAX_ENEMIES * ENEMY_SIZE
 .clr:XOR    A : LD (HL), A : INC HL : DJNZ .clr
     LD      HL, ENEMY_BULLETS
     LD      B, MAX_ENEMIES * ENEMY_BULLET_SIZE
 .clrb:XOR   A : LD (HL), A : INC HL : DJNZ .clrb
+    LD      HL, TANK_BULLETS
+    LD      B, 2 * ENEMY_BULLET_SIZE
+.clrt:XOR   A : LD (HL), A : INC HL : DJNZ .clrt
 
     ; Laske montako: LEVEL + 2, max MAX_ENEMIES
     LD      A, (LEVEL)
@@ -526,8 +863,13 @@ SPAWN_WAVE:
     JR      C, .cnt_ok
     LD      A, MAX_ENEMIES
 .cnt_ok:
-    LD      B, A            ; B = spawnaittavien määrä
+    ; Aina 1 tankki ensimmäisenä
     LD      IX, ENEMIES
+    CALL    SPAWN_TANK
+    LD      DE, ENEMY_SIZE : ADD IX, DE
+    DEC     A               ; vähennetään 1 tankin paikasta
+    OR      A : RET Z       ; vain tankki tällä aallolla
+    LD      B, A
 .spawn_lp:
     PUSH    BC
     CALL    SPAWN_WORRIT
