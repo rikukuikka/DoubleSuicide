@@ -6,13 +6,13 @@
 ;   IX+0: X
 ;   IX+1: Y
 ;   IX+2: suunta (DIR_*)
-;   IX+3: tyyppi (ENEMY_WORRIT jne.)
+;   IX+3: tyyppi (ENEMY_ROBOT jne.)
 ;   IX+4: aktiivinen (1=kyllä)
 ;   IX+5: nopeus (px/frame) — asetetaan SPAWN_*:ssä, liikelogiikka lukee tästä
 ;   IX+6-7: varattu
 
 ENEMY_NONE      EQU 0
-ENEMY_WORRIT    EQU 1
+ENEMY_ROBOT     EQU 1
 ENEMY_TANK      EQU 2
 ENEMY_GHOST     EQU 3
 ENEMY_SIZE      EQU 8
@@ -21,11 +21,11 @@ MAX_ENEMIES     EQU 6
 ENEMIES         EQU 0xC010      ; 6*8=48 tavua RAM:issa
 RAND_SEED       EQU 0xC040      ; 2 tavua
 
-WORRIT_COLOR    EQU 10          ; keltainen
+ROBOT_COLOR     EQU 10          ; keltainen
 TANK_COLOR      EQU 13          ; magenta
 GHOST_COLOR     EQU 15          ; valkoinen
-GHOST_SPEED     EQU 2           ; nopeampi kuin worrit/tank (ENEMY_SPEED=1)
-GHOST_PAT_BASE  EQU 72          ; RADAR_DOT_PAT(68) varaa 4 patternia (68-71), 32 patternia: 72-103
+GHOST_SPEED     EQU 2           ; nopeampi kuin robotti/tankki (ENEMY_SPEED=1)
+GHOST_PAT_BASE  EQU 76          ; RADAR_DOT_PAT(72) varaa 4 patternia (72-75), 32 patternia: 76-107
 ; Haamun näkyvyyspuskuri: kuinka monta pikseliä pelaajan 16x16-spriten
 ; reunan ulkopuolelle näkyvyys ulottuu. Kynnys = 16 (sprite) + puskuri,
 ; koska abs(erotus) < kynnys kattaa sekä spritejen limityksen että puskurin
@@ -33,8 +33,8 @@ GHOST_PAT_BASE  EQU 72          ; RADAR_DOT_PAT(68) varaa 4 patternia (68-71), 3
 GHOST_SIGHT_BUFFER  EQU 10
 GHOST_SIGHT_TOL     EQU 16 + GHOST_SIGHT_BUFFER
 
-WORRIT_PATS:
-    ; 16x16 Worrit (pattern 8 = offset 64, yksi frame)
+ROBOT_PATS:
+    ; 16x16 Robotti (pattern 8 = offset 64, yksi frame)
     ;Oikea
     DB $00,$03,$07,$07,$03,$01,$03,$06
     DB $05,$05,$06,$3F,$49,$49,$3F,$00
@@ -56,7 +56,7 @@ WORRIT_PATS:
     DB $00,$8C,$92,$92,$9E,$F2,$B2,$DE
     DB $DE,$32,$F2,$1E,$12,$12,$0C,$00
 
-WORRIT_PATS_END:
+ROBOT_PATS_END:
 
 TANK_PATS:
 
@@ -130,10 +130,10 @@ RADAR_DOT_PATS:
 RADAR_DOT_PATS_END:
 
     ALIGN   4
-WORRIT_DIR_PAT:
+ROBOT_DIR_PAT:
     DB 32, 36, 44, 40   ; DIR_RIGHT=0, DIR_LEFT=1, DIR_UP=2, DIR_DOWN=3
 TANK_DIR_PAT:
-    DB 60, 60, 64, 64   ; vaaka sama sprite molemmille suunnille, sama pystylle
+    DB 64, 64, 68, 68   ; vaaka sama sprite molemmille suunnille, sama pystylle
 
     ALIGN   8
 ; Haamun suunta+animaatiokehys → pattern. Indeksi = suunta*2 + kehys(0/1)
@@ -145,16 +145,16 @@ GHOST_DIR_PAT:
 
 ; =============================================================================
 ; WAVE_TABLE — vihollismäärät per taso (muokkaa tätä helposti!)
-; Muoto: DB worritit, tankit, haamut
+; Muoto: DB robotit, tankit, haamut
 ; Yhteensä ei saa ylittää MAX_ENEMIES (= 6)
 ; Viimeinen rivi toistuu kaikilla myöhemmillä tasoilla automaattisesti
 ; =============================================================================
 WAVE_TABLE:
-    DB  2, 0, 0    ; taso 1: 2 worritia
+    DB  2, 0, 0    ; taso 1: 2 robottia
     DB  0, 2, 0    ; taso 2: 2 tankkia
-    DB  3, 1, 1    ; taso 3: 3 worritia, 1 tankki, 1 haamu
-    DB  2, 2, 1    ; taso 4: 2 worritia, 2 tankkia, 1 haamu
-    DB  3, 2, 1    ; taso 5: 3 worritia, 2 tankkia, 1 haamu
+    DB  3, 1, 1    ; taso 3: 3 robottia, 1 tankki, 1 haamu
+    DB  2, 2, 1    ; taso 4: 2 robottia, 2 tankkia, 1 haamu
+    DB  3, 2, 1    ; taso 5: 3 robottia, 2 tankkia, 1 haamu
     DB  3, 2, 1    ; taso 6+: sama
 WAVE_TABLE_END:
 MAX_WAVE_ENTRIES EQU (WAVE_TABLE_END - WAVE_TABLE) / 3
@@ -187,23 +187,24 @@ INIT_ENEMIES:
     ; Alusta LFSR siemen
     LD      HL, 0xACE1 : LD (RAND_SEED), HL
 
-    ; Lataa Worrit-patternit (pattern 32 = offset 256)
+    ; Lataa Robotti-patternit (pattern 32 = offset 256)
     LD      HL, VRAM_SPRITE_PAT + 256 : CALL VDP_SETW
-    LD      HL, WORRIT_PATS
-    LD      B, WORRIT_PATS_END - WORRIT_PATS
+    LD      HL, ROBOT_PATS
+    LD      B, ROBOT_PATS_END - ROBOT_PATS
 .pp:LD      A, (HL) : OUT (VDP_DATA), A : INC HL : DJNZ .pp
-    ; Lataa Tank-patternit (pattern 60 = offset 480, bullet/explosion jälkeen)
-    LD      HL, VRAM_SPRITE_PAT + 480 : CALL VDP_SETW
+    ; Lataa Tank-patternit (pattern 64 = offset 512, bullet/explosion-patternien
+    ; jälkeen — bullet.asm:n kaksi ammus-suuntaa + 2 räjähdystä vievät 48-63)
+    LD      HL, VRAM_SPRITE_PAT + 512 : CALL VDP_SETW
     LD      HL, TANK_PATS
     LD      B, TANK_PATS_END - TANK_PATS
 .tp:LD      A, (HL) : OUT (VDP_DATA), A : INC HL : DJNZ .tp
-    ; Lataa tutkan piste-pattern (RADAR_DOT_PAT=68, tank-patternien jälkeen).
+    ; Lataa tutkan piste-pattern (RADAR_DOT_PAT=72, tank-patternien jälkeen).
     ; 16x16-tila varaa 4 patternia vaikka piirretään vain 1 — ladataan koko lohko.
     LD      HL, VRAM_SPRITE_PAT + RADAR_DOT_PAT*8 : CALL VDP_SETW
     LD      HL, RADAR_DOT_PATS
     LD      B, RADAR_DOT_PATS_END - RADAR_DOT_PATS
 .rdp:LD     A, (HL) : OUT (VDP_DATA), A : INC HL : DJNZ .rdp
-    ; Lataa Haamu-patternit (GHOST_PAT_BASE=72, tutkan pisteen 4 patternin jälkeen)
+    ; Lataa Haamu-patternit (GHOST_PAT_BASE=76, tutkan pisteen 4 patternin jälkeen)
     ; Koko on tasan 256 tavua — DJNZ+LD B ei sovi (B on 8-bittinen), käytetään BC-laskuria
     LD      HL, VRAM_SPRITE_PAT + GHOST_PAT_BASE*8 : CALL VDP_SETW
     LD      HL, GHOST_PATS
@@ -225,11 +226,11 @@ INIT_ENEMIES:
     ; Ensimmäisen aallon viholliset WAVE_TABLE:n mukaan (LEVEL asetetaan main.asm:ssa ennen tätä kutsua)
     JP      SPAWN_ENEMIES_FOR_LEVEL
 
-; SPAWN_WORRIT — luo Worrit IX-osoitteeseen NAVMAP-pisteiden kautta
-SPAWN_WORRIT:
+; SPAWN_ROBOT — luo Robotti IX-osoitteeseen NAVMAP-pisteiden kautta
+SPAWN_ROBOT:
     CALL    PICK_SPAWN_POS
     CALL    RAND : AND 0x03 : LD (IX+2), A
-    LD      (IX+3), ENEMY_WORRIT
+    LD      (IX+3), ENEMY_ROBOT
     LD      (IX+4), 1
     LD      (IX+5), ENEMY_SPEED
     RET
@@ -390,7 +391,7 @@ GET_NAVMAP_DIRS:
 ; =============================================================================
 ; RANDOM_TURN — seinä edessä: kokeile satunnaisia suuntia (16 yritystä)
 ; Asettaa (IX+2) jos vapaa suunta löytyy. Nopeus luetaan (IX+5):stä.
-; Yhteinen Worritille ja Chaserille (tankki/haamu). Tuhoaa A, B, C, D, E.
+; Yhteinen Robotille ja Chaserille (tankki/haamu). Tuhoaa A, B, C, D, E.
 ; =============================================================================
 RANDOM_TURN:
     LD      B, 16
@@ -421,9 +422,9 @@ RANDOM_TURN:
     RET
 
 ; =============================================================================
-; UPDATE_WORRIT — liikuta yksi Worrit (IX = data), nopeus (IX+5)
+; UPDATE_ROBOT — liikuta yksi Robotti (IX = data), nopeus (IX+5)
 ; =============================================================================
-UPDATE_WORRIT:
+UPDATE_ROBOT:
     LD      A, (IX+2) : LD D, A     ; D = suunta
 
     ; Kokeile liikkua nykyiseen suuntaan — tukossa → RANDOM_TURN
@@ -707,8 +708,8 @@ UPDATE_ENEMIES:
     PUSH    DE
     LD      A, (IX+4) : OR A : JR Z, .skip
     LD      A, (IX+3)
-    CP      ENEMY_WORRIT : JR NZ, .chk_tank
-    PUSH    DE : CALL UPDATE_WORRIT : POP DE
+    CP      ENEMY_ROBOT : JR NZ, .chk_tank
+    PUSH    DE : CALL UPDATE_ROBOT : POP DE
     LD      A, D : CALL ENEMY_TRY_SHOOT
     JR      .skip
 .chk_tank:
@@ -741,9 +742,9 @@ DRAW_ENEMIES:
     LD      A, (IX+1) : DEC A : OUT (VDP_DATA), A    ; Y
     LD      A, (IX+0) : OUT (VDP_DATA), A              ; X
     LD      A, (IX+3) : CP ENEMY_TANK : JR Z, .dtank
-    LD      HL, WORRIT_DIR_PAT : LD A, (IX+2) : ADD A, L : LD L, A : LD A, (HL)
+    LD      HL, ROBOT_DIR_PAT : LD A, (IX+2) : ADD A, L : LD L, A : LD A, (HL)
     OUT     (VDP_DATA), A
-    LD      A, WORRIT_COLOR : OUT (VDP_DATA), A
+    LD      A, ROBOT_COLOR : OUT (VDP_DATA), A
     JR      .next
 .dtank:
     LD      HL, TANK_DIR_PAT : LD A, (IX+2) : ADD A, L : LD L, A : LD A, (HL)
@@ -814,7 +815,7 @@ GHOST_VISIBLE:
 ; =============================================================================
 ; DRAW_RADAR — piirtää vihollisten sijainnit tutkaan spriteinä (spritet
 ; RADAR_SPRITE_BASE..+5, yksi per ENEMIES-slotti). Kehys (hud.asm) on kiinteä,
-; tämä piirtää vain pisteet oikean värisinä (WORRIT/TANK/GHOST_COLOR).
+; tämä piirtää vain pisteet oikean värisinä (ROBOT/TANK/GHOST_COLOR).
 ; 1 pelikentän tile = 1 pikseli, 1px alaspäin siirrettynä keskitystä varten.
 ; =============================================================================
 DRAW_RADAR:
@@ -835,10 +836,10 @@ DRAW_RADAR:
 
     LD      A, RADAR_DOT_PAT : OUT (VDP_DATA), A
 
-    ; Väri: worrit=keltainen, tank=magenta, ghost=valkoinen
+    ; Väri: robotti=keltainen, tank=magenta, ghost=valkoinen
     LD      A, (IX+3) : CP ENEMY_TANK : JR Z, .rtankcol
     CP      ENEMY_GHOST : JR Z, .rghostcol
-    LD      A, WORRIT_COLOR : JR .rcolout
+    LD      A, ROBOT_COLOR : JR .rcolout
 .rtankcol:
     LD      A, TANK_COLOR : JR .rcolout
 .rghostcol:
@@ -1039,7 +1040,8 @@ DRAW_ENEMY_BULLETS:
     LD      A, (IX+3) : OR A : JR Z, .hide
     LD      A, (IX+1) : DEC A : OUT (VDP_DATA), A
     LD      A, (IX+0) : OUT (VDP_DATA), A
-    LD      A, ENEMY_BULLET_PAT   : OUT (VDP_DATA), A
+    LD      HL, BULLET_DIR_PAT : LD A, (IX+2) : ADD A, L : LD L, A : LD A, (HL)
+    OUT     (VDP_DATA), A                             ; pattern suunnan mukaan
     LD      A, ENEMY_BULLET_COLOR : OUT (VDP_DATA), A
     JR      .next
 .hide:
@@ -1075,7 +1077,8 @@ DRAW_TANK_BULLETS:
     LD      A, (IX+3) : OR A : JR Z, .hide
     LD      A, (IX+1) : DEC A : OUT (VDP_DATA), A
     LD      A, (IX+0) : OUT (VDP_DATA), A
-    LD      A, ENEMY_BULLET_PAT   : OUT (VDP_DATA), A
+    LD      HL, BULLET_DIR_PAT : LD A, (IX+2) : ADD A, L : LD L, A : LD A, (HL)
+    OUT     (VDP_DATA), A                             ; pattern suunnan mukaan
     LD      A, TANK_BULLET_COLOR  : OUT (VDP_DATA), A
     JR      .next
 .hide:
@@ -1136,13 +1139,13 @@ SPAWN_ENEMIES_FOR_LEVEL:
     CP      MAX_WAVE_ENTRIES : JR C, .wt_ok
     LD      A, MAX_WAVE_ENTRIES - 1         ; leikkaa viimeiseen riviin
 .wt_ok:
-    ; indeksi * 3 (3 tavua per merkintä: worritit, tankit, haamut)
+    ; indeksi * 3 (3 tavua per merkintä: robotit, tankit, haamut)
     LD      B, A : ADD A, A : ADD A, B
     LD      HL, WAVE_TABLE
     ADD     A, L : LD L, A
     LD      A, H : ADC A, 0 : LD H, A
     LD      B, (HL) : INC HL : LD C, (HL) : INC HL : LD A, (HL)
-                                    ; B = worritit, C = tankit, A = haamut
+                                    ; B = robotit, C = tankit, A = haamut
 
     LD      IX, ENEMIES
 
@@ -1158,7 +1161,7 @@ SPAWN_ENEMIES_FOR_LEVEL:
 
 .sw_tanks:
     ; Spawnaa tankit
-    LD      A, C : OR A : JR Z, .sw_worrits
+    LD      A, C : OR A : JR Z, .sw_robots
     LD      D, C
 .sw_tank:
     PUSH    BC : PUSH    DE
@@ -1167,14 +1170,14 @@ SPAWN_ENEMIES_FOR_LEVEL:
     POP     DE : POP     BC
     DEC     D : JR NZ, .sw_tank
 
-.sw_worrits:
-    ; Spawnaa worritit
+.sw_robots:
+    ; Spawnaa robotit
     LD      A, B : OR A : RET Z
     LD      D, B
-.sw_worrit:
+.sw_robot:
     PUSH    BC : PUSH    DE
-    CALL    SPAWN_WORRIT
+    CALL    SPAWN_ROBOT
     LD      BC, ENEMY_SIZE : ADD IX, BC
     POP     DE : POP     BC
-    DEC     D : JR NZ, .sw_worrit
+    DEC     D : JR NZ, .sw_robot
     RET

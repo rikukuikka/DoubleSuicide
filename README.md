@@ -33,14 +33,14 @@ openmsx -machine C-BIOS_MSX1 -cart build/DoubleSuicide.rom -joytype1 keys
 - **Törmäystarkistus** — pikselitarkka seinäkollisio 16×16 sprite-alueelle (4 kulmapistettä)
 - **Snap-to-grid** — automaattinen kohdistus 8px-ruudukkoon risteyksessä käännettäessä
 - **Portaalit** — vasemman ja oikean reunan aukot teleporttaavat toiselle puolelle
-- **Worrit-viholliset** — 4-suuntaiset spritet, satunnaissuuntainen AI (25% mahdollisuus harkita kääntymistä risteyksessä, muuten jatkaa suoraan), välttelee takaisin kääntymistä; liikkuvat nopeudella 1 (pelaaja nopeudella 2)
+- **Robotti-viholliset** — 4-suuntaiset spritet, satunnaissuuntainen AI (25% mahdollisuus harkita kääntymistä risteyksessä, muuten jatkaa suoraan), välttelee takaisin kääntymistä; liikkuvat nopeudella 1 (pelaaja nopeudella 2)
 - **Tankki-vihollinen** — jahtaa lähintä elossaolevaa pelaajaa (dx/dy-vertailu suunnan valintaan), ampuu molempiin suuntiin kun samalla rivillä/sarakkeella liikkumisakselinsa mukaan
 - **Haamu-vihollinen** — jahtaa pelaajaa kuten tankki mutta nopeudella 2, ei ammu koskaan; **näkyy vain kun elossaoleva pelaaja on samalla rivillä tai sarakkeella** (muuten piilossa), 2-frame kävelyanimaatio
-- **Vihollisten ampuminen** — Worrit/Tankki ampuvat kun samalla rivillä tai sarakkeella kuin pelaaja (50% todennäköisyys), vain suuntaan jota kohti liikkuu; parittomat viholliset ampuvat P1:tä, parilliset P2:ta (yksinpelissä kaikki P1:tä)
+- **Vihollisten ampuminen** — Robotti/Tankki ampuvat kun samalla rivillä tai sarakkeella kuin pelaaja (50% todennäköisyys), vain suuntaan jota kohti liikkuu; parittomat viholliset ampuvat P1:tä, parilliset P2:ta (yksinpelissä kaikki P1:tä)
 - **NAVMAP-pohjainen spawnaus** — viholliset syntyvät valmiiksi lasketuille risteyspisteille (ei enää arpo-ja-kokeile-seinää), vähintään 30px päähän pelaajista ja 16px päähän toisistaan; 64 yritystä + varmuudella-toimiva NAVMAP-skannaus fallbackina
-- **WAVE_TABLE** — jokaisen tason vihollismäärät (worritit/tankit/haamut) määritellään yhdessä helposti muokattavassa taulukossa `enemy.asm`:ssä; viimeinen rivi toistuu kaikilla myöhemmillä tasoilla
-- **Tutka (radar)** — HUD:in keskellä 32×24px alue, jossa koko pelikentän tile vastaa yhtä pikseliä; vihollisten sijainnit spriteinä oikean tyypin värillä (Worrit keltainen, Tankki magenta, Haamu valkoinen — näkyy tutkassa vaikka piilossa kentällä), sininen kehys kiinteinä nametable-tileinä
-- **Ammukset** — yksi ammus per pelaaja, seinätarkistus keskipisteellä, tappaa Worritin
+- **WAVE_TABLE** — jokaisen tason vihollismäärät (robotit/tankit/haamut) määritellään yhdessä helposti muokattavassa taulukossa `enemy.asm`:ssä; viimeinen rivi toistuu kaikilla myöhemmillä tasoilla
+- **Tutka (radar)** — HUD:in keskellä 32×24px alue, jossa koko pelikentän tile vastaa yhtä pikseliä; vihollisten sijainnit spriteinä oikean tyypin värillä (Robotti keltainen, Tankki magenta, Haamu valkoinen — näkyy tutkassa vaikka piilossa kentällä), sininen kehys kiinteinä nametable-tileinä
+- **Ammukset** — yksi ammus per pelaaja, seinätarkistus keskipisteellä, tappaa Robotin
 - **Vihollisten ammukset** — puolet hitaampia kuin pelaajan, eivät ylitä HUD-aluetta
 - **Räjähdykset** — 2-frame animaatio kun vihollinen tuhoutuu
 - **PSG-ääni** — kanava A: ampuminen, kanava B: räjähdys, kanava C: taustamusiikki (sahalaita-envelope)
@@ -60,7 +60,7 @@ openmsx -machine C-BIOS_MSX1 -cart build/DoubleSuicide.rom -joytype1 keys
 | `maze.asm`      | Kenttädata (leveät käytävät), IS_WALL, DRAW_MAZE, INIT_NAVMAP |
 | `input.asm`     | Näppäimistö- ja joystick-luku (PSG R14/R15)                   |
 | `player.asm`    | 16×16 spritet, animaatio, liikkuminen, portaalit, kuolema      |
-| `enemy.asm`     | Worrit/Tankki/Haamu AI, ampuminen, LFSR-satunnaisluku, NAVMAP-spawn, WAVE_TABLE, tutkan piirto, räjähdykset |
+| `enemy.asm`     | Robotti/Tankki/Haamu AI, ampuminen, LFSR-satunnaisluku, NAVMAP-spawn, WAVE_TABLE, tutkan piirto, räjähdykset |
 | `bullet.asm`    | Pelaajan ammukset, törmäys vihollisiin, pisteytys              |
 | `sound.asm`     | PSG AY-3-8910 taustamusiikki + ääniefektit                    |
 | `hud.asm`       | Numerotileet, pisteet, elämänäyttö, tutkan kehystileet         |
@@ -78,20 +78,21 @@ VDP on 16×16-sprite-tilassa (R#1 SIZE-bitti) — **jokainen sprite varaa aina
 | Pattern # | Sisältö                              |
 |-----------|---------------------------------------|
 | 0–31      | Pelaaja: 4 suuntaa × 2 framea         |
-| 32–47     | Worrit: oikea(32) / vasen(36) / alas(40) / ylös(44) |
-| 48–51     | Ammus (pelaaja, myös ENEMY_BULLET_PAT) |
-| 52–55     | Räjähdys frame 1                      |
-| 56–59     | Räjähdys frame 2                      |
-| 60–67     | Tankki: vaaka(60) / pysty(64)         |
-| 68–71     | Tutkan piste (vain neljännes 68 käytössä, loput tyhjät varauksen vuoksi) |
-| 72–103    | Haamu: 4 suuntaa × 2 framea (`GHOST_DIR_PAT`-taulukko `enemy.asm`:ssä) |
+| 32–47     | Robotti: oikea(32) / vasen(36) / alas(40) / ylös(44) |
+| 48–51     | Ammus vaaka (oikea/vasen, `BULLET_DIR_PAT` — käytetään myös vihollisammuksille) |
+| 52–55     | Ammus pysty (ylös/alas, `BULLET_DIR_PAT`)         |
+| 56–59     | Räjähdys frame 1                      |
+| 60–63     | Räjähdys frame 2                      |
+| 64–71     | Tankki: vaaka(64) / pysty(68)         |
+| 72–75     | Tutkan piste (vain neljännes 72 käytössä, loput tyhjät varauksen vuoksi) |
+| 76–107    | Haamu: 4 suuntaa × 2 framea (`GHOST_DIR_PAT`-taulukko `enemy.asm`:ssä) |
 
 ### Sprite attribute table (32 spriteä, VRAM 0x1B00+)
 
 | Sprite # | Sisältö                        |
 |----------|--------------------------------|
 | 0–1      | Pelaajat (P1, P2)              |
-| 2–7      | Viholliset (Worrit/Tankki/Haamu, ENEMIES-taulukko) |
+| 2–7      | Viholliset (Robotti/Tankki/Haamu, ENEMIES-taulukko) |
 | 8–9      | Pelaajan ammukset              |
 | 10–11    | Räjähdykset                    |
 | 12–17    | Vihollisten ammukset           |
@@ -110,7 +111,7 @@ VDP on 16×16-sprite-tilassa (R#1 SIZE-bitti) — **jokainen sprite varaa aina
 | C00D          | FRAME_CTR        | Frame-laskuri animaatioille           |
 | C00E          | LEVEL            | Kentän numero (1+)                    |
 | C00F          | WAVE_TIMER       | Aaltojen välinen viive                |
-| C010–C03F     | ENEMIES          | 6 vihollista × 8 tavua (Worrit/Tankki/Haamu, tyyppi IX+3:ssa) |
+| C010–C03F     | ENEMIES          | 6 vihollista × 8 tavua (Robotti/Tankki/Haamu, tyyppi IX+3:ssa) |
 | C040–C041     | RAND_SEED        | 16-bit LFSR-siemen                    |
 | C050–C05F     | BULLETS          | 2 pelaajan ammusta × 8 tavua         |
 | C060–C062     | SFX_A_CTR …      | Ääniefektien laskurit                 |
@@ -143,6 +144,6 @@ VDP on 16×16-sprite-tilassa (R#1 SIZE-bitti) — **jokainen sprite varaa aina
 
 ## TODO
 
-- [x] Lisää vihollistyyppejä — Tankki ja Haamu lisätty; Garwor/Thorwar/Worluk/Wizard yhä puuttuvat
+- [x] Lisää vihollistyyppejä — Tankki ja Haamu lisätty; Wizard puuttuu
 - [ ] Useampia kenttälayouteja
 - [ ] Vihollisten nopeuden kasvu tasojen myötä (nyt kiinteä nopeus per tyyppi)

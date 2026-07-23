@@ -93,7 +93,6 @@ NAVMAP          EQU 0xC100      ; 32*24=768 tavua (0xC100-0xC3FF)
 ; Vihollisten ammukset
 ENEMY_BULLETS       EQU 0xC081      ; 6*4=24 tavua (0xC081-0xC098)
 ENEMY_BULLET_SIZE   EQU 4           ; X, Y, dir, active
-ENEMY_BULLET_PAT    EQU 48          ; sama pattern kuin pelaajan luodilla
 ENEMY_BULLET_COLOR  EQU 8           ; punainen
 ENEMY_BULLET_SPEED  EQU 2           ; puolet pelaajan luodin nopeudesta
 
@@ -105,8 +104,8 @@ TANK_BULLET_COLOR   EQU 13          ; magenta, sama kuin tankki
 EXPLOSIONS      EQU 0xC07A      ; 2*3=6 tavua RAM:issa (0xC060-0xC062 = SFX RAM)
 EXPL_SIZE       EQU 3
 EXPL_TIMER_MAX  EQU 20
-EXPL_PAT1       EQU 52          ; Räjähdys 1 (kirkas) = offset 416
-EXPL_PAT2       EQU 56          ; Räjähdys 2 (haalistuva) = offset 448
+EXPL_PAT1       EQU 56          ; Räjähdys 1 (kirkas) = offset 448
+EXPL_PAT2       EQU 60          ; Räjähdys 2 (haalistuva) = offset 480
 EXPL_COLOR1     EQU 15          ; valkoinen välähdys
 EXPL_COLOR2     EQU 9           ; vaaleanpunainen sammuminen
 
@@ -126,6 +125,6 @@ RADAR_BORDER_L_WALL EQU 45      ; vasen laita muurin kohdalla (rivi 21)
 RADAR_BORDER_R_WALL EQU 46      ; oikea laita muurin kohdalla (rivi 21)
 
 RADAR_SPRITE_BASE   EQU 20      ; spritet 20-25 (6 kpl, vapaana)
-RADAR_DOT_PAT       EQU 68      ; uusi pieni piste-pattern (vapaa, tank vie 60-67, ei 60-63)
+RADAR_DOT_PAT       EQU 72      ; pieni piste-pattern (tank vie 64-71, katso enemy.asm)
 RADAR_ORIGIN_X      EQU 112     ; sarake14 * 8
 RADAR_ORIGIN_Y      EQU 168     ; rivi21 * 8, sisältää jo Y-1 -sovituksen

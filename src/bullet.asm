@@ -20,14 +20,17 @@ BULLETS         EQU 0xC050      ; 2*8=16 tavua RAM:issa
 ; Ammussprite patternit (pattern 8 ja 9)
 BULLET_PATS:
     ; 16x16 ammus (pattern 12 = offset 96), pieni piste keskellä
-    ; Vasen puoli ylä (rivit 0-7)
-    DB 0x00,0x00,0x00,0x00,0x00,0x00,0x03,0x07
-    ; Vasen puoli ala (rivit 8-15)
-    DB 0x07,0x03,0x00,0x00,0x00,0x00,0x00,0x00
-    ; Oikea puoli ylä (rivit 0-7)
-    DB 0x00,0x00,0x00,0x00,0x00,0x00,0xC0,0xE0
-    ; Oikea puoli ala (rivit 8-15)
-    DB 0xE0,0xC0,0x00,0x00,0x00,0x00,0x00,0x00
+    ; Oikea/vasen
+    DB $00,$00,$00,$00,$00,$00,$00,$03
+    DB $03,$00,$00,$00,$00,$00,$00,$00
+    DB $00,$00,$00,$00,$00,$00,$00,$C0
+    DB $C0,$00,$00,$00,$00,$00,$00,$00
+    ; Ylös/alas
+    DB $00,$00,$00,$00,$00,$00,$01,$01
+    DB $01,$01,$00,$00,$00,$00,$00,$00
+    DB $00,$00,$00,$00,$00,$00,$80,$80
+    DB $80,$80,$00,$00,$00,$00,$00,$00
+
     ; Räjähdys 1
     DB $00,$00,$00,$00,$00,$01,$02,$01
     DB $05,$01,$01,$02,$00,$00,$00,$00
@@ -40,12 +43,16 @@ BULLET_PATS:
     DB $D0,$F2,$AC,$E4,$12,$A4,$48,$00
 BULLET_PATS_END:
 
+    ALIGN   4
+BULLET_DIR_PAT:
+    DB 48, 48, 52, 52   ; DIR_RIGHT=0, DIR_LEFT=1, DIR_UP=2, DIR_DOWN=3
+
 ; =============================================================================
 ; INIT_BULLETS — alusta ammukset
 ; =============================================================================
 INIT_BULLETS:
     ; Lataa sprite patternit (pattern 8 alkaen = offset 8*8=64)
-    LD      HL, VRAM_SPRITE_PAT + 384 : CALL VDP_SETW  ; 16x16: pelaaja 256 + Worrit 128
+    LD      HL, VRAM_SPRITE_PAT + 384 : CALL VDP_SETW  ; 16x16: pelaaja 256 + Robotti 128
     LD      HL, BULLET_PATS
     LD      B, BULLET_PATS_END - BULLET_PATS
 .pp:LD      A, (HL) : OUT (VDP_DATA), A : INC HL : DJNZ .pp
@@ -270,7 +277,8 @@ DRAW_BULLETS:
     LD      HL, VRAM_SPRITE_ATT + 32 : CALL VDP_SETW
     LD      A, (0xC051) : DEC A : OUT (VDP_DATA), A  ; Y, TMS9918A: Y-1
     LD      A, (0xC050) : OUT (VDP_DATA), A           ; X
-    LD      A, 48 : OUT (VDP_DATA), A                 ; 16x16 ammus pattern
+    LD      HL, BULLET_DIR_PAT : LD A, (0xC052) : ADD A, L : LD L, A : LD A, (HL)
+    OUT     (VDP_DATA), A                             ; pattern suunnan mukaan
     LD      A, BULLET_COLOR : OUT (VDP_DATA), A
     JR      .p2_bullet
 .hide_p1:
@@ -282,7 +290,8 @@ DRAW_BULLETS:
     LD      HL, VRAM_SPRITE_ATT + 36 : CALL VDP_SETW
     LD      A, (0xC059) : DEC A : OUT (VDP_DATA), A  ; Y, TMS9918A: Y-1
     LD      A, (0xC058) : OUT (VDP_DATA), A           ; X
-    LD      A, 48 : OUT (VDP_DATA), A
+    LD      HL, BULLET_DIR_PAT : LD A, (0xC05A) : ADD A, L : LD L, A : LD A, (HL)
+    OUT     (VDP_DATA), A
     LD      A, BULLET_COLOR : OUT (VDP_DATA), A
     RET
 .hide_p2:
