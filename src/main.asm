@@ -17,6 +17,7 @@ ROM_HEADER:
     INCLUDE "src/player.asm"
     INCLUDE "src/enemy.asm"
     INCLUDE "src/bullet.asm"
+    INCLUDE "src/boss.asm"
     INCLUDE "src/sound.asm"
     INCLUDE "src/hud.asm"
     INCLUDE "src/title.asm"
@@ -46,7 +47,8 @@ INIT:
     LD      HL, 0x2800 + 16 : CALL LOAD_HUD_COLORS
     LD      HL, 0x3000 + 16 : CALL LOAD_HUD_COLORS
     CALL    INIT_PLAYERS
-    LD      A, 1 : LD (LEVEL), A   ; LEVEL täytyy olla asetettu ennen INIT_ENEMIES:iä (WAVE_TABLE-haku)
+    CALL    INIT_BOSS              ; nollaa BOSS_ACTIVE, lataa Wizard-dummypattern
+    LD      A, 6 : LD (LEVEL), A   ; TESTI: suoraan boss-tasolle (WAVE_TABLE taso 6) — vaihda 1:ksi normaaliin peliin
     CALL    INIT_ENEMIES
     CALL    INIT_BULLETS
     CALL    INIT_EXPLOSIONS
@@ -77,6 +79,7 @@ MAINLOOP:
     CALL    DRAW_EXPLOSIONS
     CALL    DRAW_HUD
     CALL    DRAW_RADAR
+    CALL    DRAW_WIZARD           ; Wizard käyttää vain spritet 26-28, ei törmää muihin
 
     CALL    READ_INPUTS
 
@@ -98,6 +101,7 @@ MAINLOOP:
     CALL    UPDATE_BULLETS
     CALL    UPDATE_ENEMY_BULLETS
     CALL    UPDATE_TANK_BULLETS
+    CALL    UPDATE_WIZARD_BULLET
     CALL    UPDATE_EXPLOSIONS
     CALL    UPDATE_SOUND
     JP      MAINLOOP
@@ -111,6 +115,7 @@ MAINLOOP:
     CALL    UPDATE_BULLETS
     CALL    UPDATE_ENEMY_BULLETS
     CALL    UPDATE_TANK_BULLETS
+    CALL    UPDATE_WIZARD_BULLET
     CALL    UPDATE_EXPLOSIONS
     CALL    UPDATE_SOUND
 

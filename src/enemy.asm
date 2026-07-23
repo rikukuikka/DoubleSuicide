@@ -15,11 +15,15 @@ ENEMY_NONE      EQU 0
 ENEMY_ROBOT     EQU 1
 ENEMY_TANK      EQU 2
 ENEMY_GHOST     EQU 3
+ENEMY_WIZARD    EQU 4           ; boss — ks. boss.asm, elää ENEMIES[0]:ssa
 ENEMY_SIZE      EQU 8
 MAX_ENEMIES     EQU 6
 
 ENEMIES         EQU 0xC010      ; 6*8=48 tavua RAM:issa
 RAND_SEED       EQU 0xC040      ; 2 tavua
+
+; Vähimmäisetäisyys pelaajasta spawnissa/teleportissa (PICK_SPAWN_POS), px
+SPAWN_MIN_PLAYER_DIST EQU 50
 
 ROBOT_COLOR     EQU 10          ; keltainen
 TANK_COLOR      EQU 13          ; magenta
@@ -145,39 +149,78 @@ GHOST_DIR_PAT:
 
 ; =============================================================================
 ; WAVE_TABLE — vihollismäärät per taso (muokkaa tätä helposti!)
-; Muoto: DB robotit, tankit, haamut
-; Yhteensä ei saa ylittää MAX_ENEMIES (= 6)
-; Viimeinen rivi toistuu kaikilla myöhemmillä tasoilla automaattisesti
+; Muoto: DB robotit, tankit, haamut, wizard(0/1)
+; robotit+tankit+haamut ei saa ylittää MAX_ENEMIES (= 6). Jos wizard=1,
+; muut sarakkeet jätetään huomiotta ja spawnataan VAIN Wizard (boss-taso) —
+; ks. boss.asm. Viimeinen rivi toistuu kaikilla myöhemmillä tasoilla.
 ; =============================================================================
 WAVE_TABLE:
-    DB  2, 0, 0    ; taso 1: 2 robottia
-    DB  0, 2, 0    ; taso 2: 2 tankkia
-    DB  3, 1, 1    ; taso 3: 3 robottia, 1 tankki, 1 haamu
-    DB  2, 2, 1    ; taso 4: 2 robottia, 2 tankkia, 1 haamu
-    DB  3, 2, 1    ; taso 5: 3 robottia, 2 tankkia, 1 haamu
-    DB  3, 2, 1    ; taso 6+: sama
+    DB  2, 0, 0, 0    ; taso 1: 2 robottia
+    DB  0, 2, 0, 0    ; taso 2: 2 tankkia
+    DB  3, 1, 1, 0    ; taso 3: 3 robottia, 1 tankki, 1 haamu
+    DB  2, 2, 1, 0    ; taso 4: 2 robottia, 2 tankkia, 1 haamu
+    DB  3, 2, 1, 0    ; taso 5: 3 robottia, 2 tankkia, 1 haamu
+    DB  0, 0, 0, 1    ; taso 6: BOSS (Wizard)
+    DB  3, 2, 1, 0    ; taso 7+: takaisin normaaliin, toistuu
 WAVE_TABLE_END:
-MAX_WAVE_ENTRIES EQU (WAVE_TABLE_END - WAVE_TABLE) / 3
+MAX_WAVE_ENTRIES EQU (WAVE_TABLE_END - WAVE_TABLE) / 4
 
 ; =============================================================================
 ; RAND — 16-bit LFSR satunnaisluku, ulostulo A
+; Fibonacci-LFSR, hanat bitit 16,14,13,11 (= H:n bitit 7,5,4,2), polynomi
+; x^16+x^14+x^13+x^11+1 (maksimipituus 65535).
+;
+; HUOM #1: vanha versio yhdisti feedback-bitin LSB:ksi "OR H":lla nollaamatta
+; kohdebittiä ensin — jos rotaation tuoma LSB oli jo 1, feedback ei koskaan
+; voinut kirjoittaa sitä nollaksi. Tämä lyhensi jakson 22 tilaan 65535:stä.
+; Korjattu: SLA/RL siirtää LSB:n eksplisiittisesti nollaksi ennen
+; feedback-bitin OR:aamista.
+;
+; HUOM #2: yhden bitin siirto per kutsu tekee PERÄKKÄISISTÄ kutsuista
+; voimakkaasti korreloituneita (tila muuttuu vain 1 bitin verran), koska
+; koko 16-bittinen tila on lähes sama kahden peräkkäisen kutsun välillä.
+; Tämä näkyi esim. PICK_SPAWN_POS:issa (sarake+rivi peräkkäin) niin, että
+; vain ~64 eri (sarake,rivi)-yhdistelmää oli koskaan mahdollisia, vaikka
+; itse LFSR:n jakso on täysi. Korjattu siirtämällä kokonainen tavu (8 bittiä)
+; per RAND-kutsu — tämä nostaa erillisten peräkkäisten parien määrän lähes
+; teoreettiseen maksimiin.
 ; =============================================================================
 RAND:
+    PUSH    BC
+    PUSH    DE
     PUSH    HL
     LD      HL, (RAND_SEED)
-    ; LFSR tap bits 16,14,13,11
-    LD      A, H : RLA
-    RL      L : RL H
-    LD      A, H : XOR L : LD A, H
-    XOR     L
-    RRA
-    XOR     H
+    LD      B, 8               ; siirrä koko tavu (8 bittiä) kutsua kohti
+.rstep:
+    ; feedback = H.bit7 XOR H.bit2 XOR H.bit4 XOR H.bit5 (hanat 16,11,13,14)
+    LD      A, H
+    RLCA                        ; A.bit0 = H.bit7
+    LD      C, A
+    LD      A, H
+    RRCA : RRCA                 ; A.bit0 = H.bit2
+    XOR     C
+    LD      C, A
+    LD      A, H
+    RLCA : RLCA : RLCA : RLCA   ; A.bit0 = H.bit4
+    XOR     C
+    LD      C, A
+    LD      A, H
+    RLCA : RLCA : RLCA          ; A.bit0 = H.bit5
+    XOR     C
     AND     0x01
-    OR      H
-    LD      H, A
+    LD      E, A                ; E.bit0 = feedback
+
+    ; Siirrä HL vasemmalle 1 bitti (LSB nollautuu), lisää feedback LSB:ksi
+    SLA     L
+    RL      H
+    LD      A, L : OR E : LD L, A
+    DJNZ    .rstep
+
     LD      (RAND_SEED), HL
     LD      A, L
     POP     HL
+    POP     DE
+    POP     BC
     RET
 
 ; =============================================================================
@@ -256,7 +299,7 @@ SPAWN_GHOST:
 ; =============================================================================
 ; PICK_SPAWN_POS — valitsee spawn-pisteen NAVMAP:ista
 ; Sisääntulo: IX = kohdeslotti
-; Vaatimukset: NAVMAP-piste vapaa, etäisyys pelaajiin >= 30px,
+; Vaatimukset: NAVMAP-piste vapaa, etäisyys pelaajiin >= SPAWN_MIN_PLAYER_DIST px,
 ;              ei päällekkäisyyttä aiemmin spawnattujen vihollisten kanssa
 ; Ulostulo: IX+0=X, IX+1=Y asetettu (tai fallback jos 64 yritystä epäonnistuu)
 ; Tuhoaa: A, B, C, D, E, H, L, IY (IX säilyy)
@@ -287,11 +330,11 @@ PICK_SPAWN_POS:
     LD      A, (P1_X) : LD B, A : LD A, (IX+0) : SUB B
     JP      P, .psp_p1xp : NEG
 .psp_p1xp:
-    CP      30 : JR NC, .psp_p2
+    CP      SPAWN_MIN_PLAYER_DIST : JR NC, .psp_p2
     LD      A, (P1_Y) : LD B, A : LD A, (IX+1) : SUB B
     JP      P, .psp_p1yp : NEG
 .psp_p1yp:
-    CP      30 : JR C, .pspbad
+    CP      SPAWN_MIN_PLAYER_DIST : JR C, .pspbad
 .psp_p2:
     ; Tarkista P2-etäisyys (jos elossa)
     LD      A, (P2_DEAD_TMR) : OR A : JR NZ, .psp_prev
@@ -299,11 +342,11 @@ PICK_SPAWN_POS:
     LD      A, (P2_X) : LD B, A : LD A, (IX+0) : SUB B
     JP      P, .psp_p2xp : NEG
 .psp_p2xp:
-    CP      30 : JR NC, .psp_prev
+    CP      SPAWN_MIN_PLAYER_DIST : JR NC, .psp_prev
     LD      A, (P2_Y) : LD B, A : LD A, (IX+1) : SUB B
     JP      P, .psp_p2yp : NEG
 .psp_p2yp:
-    CP      30 : JR C, .pspbad
+    CP      SPAWN_MIN_PLAYER_DIST : JR C, .pspbad
 .psp_prev:
     ; Tarkista päällekkäisyys jo aktiivisten vihollisten kanssa (vain active=1)
     LD      A, (IX+0) : LD D, A
@@ -312,6 +355,15 @@ PICK_SPAWN_POS:
     LD      B, MAX_ENEMIES
 .psp_elp:
     LD      A, (IY+4) : OR A : JR Z, .psp_enxt   ; ei aktiivinen → ohita
+    ; Ohita kutsujan oma slotti (IY == IX) — muuten jo aktiivisen vihollisen
+    ; uudelleensijoitus (esim. Wizardin teleportti) vertaisi itseään itseensä
+    ; (etäisyys aina 0) ja hylkäisi jokaisen ehdokkaan.
+    PUSH    BC
+    PUSH    IX : POP HL
+    PUSH    IY : POP BC
+    OR      A : SBC HL, BC
+    POP     BC
+    JR      Z, .psp_enxt
     LD      A, (IY+0) : SUB D
     JP      P, .psp_expos : NEG
 .psp_expos:
@@ -718,8 +770,13 @@ UPDATE_ENEMIES:
     CALL    TANK_TRY_SHOOT
     JR      .skip
 .chk_ghost:
-    CP      ENEMY_GHOST : JR NZ, .skip
+    CP      ENEMY_GHOST : JR NZ, .chk_wizard
     CALL    UPDATE_CHASER         ; sama jahtauslogiikka kuin tankilla, ei ammu
+    JR      .skip
+.chk_wizard:
+    CP      ENEMY_WIZARD : JR NZ, .skip
+    CALL    UPDATE_WIZARD         ; boss.asm: robotti-liike + teleporttaus
+    CALL    WIZARD_TRY_SHOOT      ; oma ammusslotti, ei jaeta ENEMY_BULLETSin kanssa
 .skip:
     POP     DE : INC D
     LD      BC, ENEMY_SIZE : ADD IX, BC
@@ -738,7 +795,8 @@ DRAW_ENEMIES:
 
 .loop:
     LD      A, (IX+4) : OR A : JR Z, .hide
-    LD      A, (IX+3) : CP ENEMY_GHOST : JR Z, .dghost
+    LD      A, (IX+3) : CP ENEMY_WIZARD : JR Z, .hide  ; piirretään erikseen DRAW_WIZARD:issa
+    CP      ENEMY_GHOST : JR Z, .dghost
     LD      A, (IX+1) : DEC A : OUT (VDP_DATA), A    ; Y
     LD      A, (IX+0) : OUT (VDP_DATA), A              ; X
     LD      A, (IX+3) : CP ENEMY_TANK : JR Z, .dtank
@@ -774,7 +832,7 @@ DRAW_ENEMIES:
 
 .next:
     ADD     IX, DE          ; B (laskuri) ei koske — LD BC,n olisi nollannut B:n
-    DJNZ    .loop
+    DEC     B : JP NZ, .loop   ; DJNZ ei riitä (silmukka >128 tavua)
     RET
 
 ; =============================================================================
@@ -1139,19 +1197,27 @@ SPAWN_ENEMIES_FOR_LEVEL:
     CP      MAX_WAVE_ENTRIES : JR C, .wt_ok
     LD      A, MAX_WAVE_ENTRIES - 1         ; leikkaa viimeiseen riviin
 .wt_ok:
-    ; indeksi * 3 (3 tavua per merkintä: robotit, tankit, haamut)
-    LD      B, A : ADD A, A : ADD A, B
+    ; indeksi * 4 (4 tavua per merkintä: robotit, tankit, haamut, wizard)
+    ADD     A, A : ADD A, A
     LD      HL, WAVE_TABLE
     ADD     A, L : LD L, A
     LD      A, H : ADC A, 0 : LD H, A
-    LD      B, (HL) : INC HL : LD C, (HL) : INC HL : LD A, (HL)
-                                    ; B = robotit, C = tankit, A = haamut
+    LD      B, (HL) : INC HL : LD C, (HL) : INC HL
+    LD      D, (HL) : INC HL : LD A, (HL)
+                        ; B = robotit, C = tankit, D = haamut, A = wizard (tuorein)
+
+    ; Wizard-sarake tarkistetaan heti — jos 1, spawnaa VAIN Wizard (boss-taso)
+    OR      A : JR Z, .no_boss
+    LD      A, 1 : LD (BOSS_ACTIVE), A
+    LD      IX, ENEMIES
+    JP      SPAWN_WIZARD
+.no_boss:
+    XOR     A : LD (BOSS_ACTIVE), A
 
     LD      IX, ENEMIES
 
-    ; Spawnaa haamut ensin (A tuoreena ennen kuin B/C käytetään omissa silmukoissaan)
-    OR      A : JR Z, .sw_tanks
-    LD      D, A
+    ; Spawnaa haamut ensin (D tuoreena ennen kuin B/C käytetään omissa silmukoissaan)
+    LD      A, D : OR A : JR Z, .sw_tanks
 .sw_ghost:
     PUSH    BC : PUSH    DE
     CALL    SPAWN_GHOST
