@@ -13,6 +13,7 @@
 ENEMY_NONE      EQU 0
 ENEMY_WORRIT    EQU 1
 ENEMY_TANK      EQU 2
+ENEMY_GHOST     EQU 3
 ENEMY_SIZE      EQU 8
 MAX_ENEMIES     EQU 6
 
@@ -21,6 +22,9 @@ RAND_SEED       EQU 0xC040      ; 2 tavua
 
 WORRIT_COLOR    EQU 10          ; keltainen
 TANK_COLOR      EQU 13          ; magenta
+GHOST_COLOR     EQU 15          ; valkoinen
+GHOST_SPEED     EQU 2           ; nopeampi kuin worrit/tank (ENEMY_SPEED=1)
+GHOST_PAT_BASE  EQU 72          ; RADAR_DOT_PAT(68) varaa 4 patternia (68-71), 32 patternia: 72-103
 
 WORRIT_PATS:
     ; 16x16 Worrit (pattern 8 = offset 64, yksi frame)
@@ -62,10 +66,61 @@ TANK_PATS:
 
 TANK_PATS_END:
 
-; Tutkan piste-sprite (8x8, vain 2x2 pikseliä vasemmassa yläkulmassa —
-; sprite sijoitetaan niin että tämä kulma osuu oikeaan kohtaan)
+GHOST_PATS:
+
+    ; Vasen 1
+    DB $00,$07,$0F,$0A,$0F,$09,$1F,$1F
+    DB $1F,$3F,$3F,$3F,$3D,$29,$24,$00
+    DB $00,$00,$80,$80,$C0,$C0,$C0,$E0
+    DB $F0,$F0,$F8,$FE,$F8,$24,$90,$00
+    ; Vasen 2
+    DB $00,$06,$1F,$15,$1F,$13,$1F,$1F
+    DB $1F,$3F,$3F,$3F,$3D,$24,$12,$00
+    DB $00,$00,$00,$00,$80,$80,$C0,$E0
+    DB $F0,$F8,$F8,$FC,$FE,$92,$48,$00
+    ; Oikea 1
+    DB $00,$00,$01,$01,$03,$03,$03,$07
+    DB $0F,$0F,$1F,$7F,$1F,$24,$09,$00
+    DB $00,$E0,$F0,$50,$F0,$90,$F8,$F8
+    DB $F8,$FC,$FC,$FC,$BC,$94,$24,$00
+    ; Oikea 2
+    DB $00,$00,$00,$00,$01,$01,$03,$07
+    DB $0F,$1F,$1F,$3F,$7F,$49,$12,$00
+    DB $00,$60,$F8,$A8,$F8,$C8,$F8,$F8
+    DB $F8,$FC,$FC,$FC,$BC,$24,$48,$00
+    ; Alas 1
+    DB $00,$08,$28,$1C,$5F,$3F,$1F,$5F
+    DB $3F,$0F,$5F,$3F,$1F,$7E,$00,$00
+    DB $00,$00,$00,$00,$00,$80,$F0,$FC
+    DB $F6,$DE,$D6,$FC,$C0,$00,$00,$00
+    ; Alas 2
+    DB $00,$30,$18,$5E,$3F,$1F,$5F,$3F
+    DB $1F,$4F,$3F,$1F,$5F,$3E,$00,$00
+    DB $00,$00,$00,$00,$00,$80,$C0,$F0
+    DB $FC,$F6,$DE,$D4,$FC,$00,$00,$00
+    ; Ylös 1
+    DB $00,$00,$00,$03,$3F,$6B,$7B,$6F
+    DB $3F,$0F,$01,$00,$00,$00,$00,$00
+    DB $00,$00,$7E,$F8,$FC,$FA,$F0,$FC
+    DB $FA,$F8,$FC,$FA,$38,$14,$10,$00
+    ; Ylös 2
+    DB $00,$00,$00,$3F,$2B,$7B,$6F,$3F
+    DB $0F,$03,$01,$00,$00,$00,$00,$00
+    DB $00,$00,$7C,$FA,$F8,$FC,$F2,$F8
+    DB $FC,$FA,$F8,$FC,$7A,$18,$0C,$00
+
+GHOST_PATS_END:
+
+; Tutkan piste-sprite. 16x16-spritetila varaa AINA 4 peräkkäistä patternia
+; per sprite (vaikka piirretäänkin vain yksi 8x8-neljännes) — loput 3 täytyy
+; olla tyhjiä ettei seuraavan ladatun spriten data vuoda niihin.
+; Piste on 2x2 pikseliä vasemmassa yläkulmassa (neljännes 1/4, ylä-vasen).
 RADAR_DOT_PATS:
-    DB $C0,$C0,$00,$00,$00,$00,$00,$00
+    DB $C0,$C0,$00,$00,$00,$00,$00,$00      ; ylä-vasen: piste
+    DB $00,$00,$00,$00,$00,$00,$00,$00      ; ala-vasen: tyhjä
+    DB $00,$00,$00,$00,$00,$00,$00,$00      ; ylä-oikea: tyhjä
+    DB $00,$00,$00,$00,$00,$00,$00,$00      ; ala-oikea: tyhjä
+RADAR_DOT_PATS_END:
 
     ALIGN   4
 WORRIT_DIR_PAT:
@@ -73,21 +128,29 @@ WORRIT_DIR_PAT:
 TANK_DIR_PAT:
     DB 60, 60, 64, 64   ; vaaka sama sprite molemmille suunnille, sama pystylle
 
+    ALIGN   8
+; Haamun suunta+animaatiokehys → pattern. Indeksi = suunta*2 + kehys(0/1)
+GHOST_DIR_PAT:
+    DB GHOST_PAT_BASE+8,  GHOST_PAT_BASE+12   ; DIR_RIGHT kehys0,1 (Oikea1,2)
+    DB GHOST_PAT_BASE+0,  GHOST_PAT_BASE+4    ; DIR_LEFT  kehys0,1 (Vasen1,2)
+    DB GHOST_PAT_BASE+24, GHOST_PAT_BASE+28   ; DIR_UP    kehys0,1 (Ylös1,2)
+    DB GHOST_PAT_BASE+16, GHOST_PAT_BASE+20   ; DIR_DOWN  kehys0,1 (Alas1,2)
+
 ; =============================================================================
 ; WAVE_TABLE — vihollismäärät per taso (muokkaa tätä helposti!)
-; Muoto: DB worritit, tankit
+; Muoto: DB worritit, tankit, haamut
 ; Yhteensä ei saa ylittää MAX_ENEMIES (= 6)
 ; Viimeinen rivi toistuu kaikilla myöhemmillä tasoilla automaattisesti
 ; =============================================================================
 WAVE_TABLE:
-    DB  2, 0    ; taso 1: 2 worritia, 0 tankkia
-    DB  0, 2    ; taso 2: 0 worritia, 2 tankkia
-    DB  3, 1    ; taso 3: 3 worritia, 1 tankki
-    DB  2, 2    ; taso 4: 2 worritia, 2 tankkia
-    DB  4, 2    ; taso 5: 4 worritia, 2 tankkia
-    DB  4, 2    ; taso 6+: sama
+    DB  2, 0, 0    ; taso 1: 2 worritia
+    DB  0, 2, 0    ; taso 2: 2 tankkia
+    DB  3, 1, 1    ; taso 3: 3 worritia, 1 tankki, 1 haamu
+    DB  2, 2, 1    ; taso 4: 2 worritia, 2 tankkia, 1 haamu
+    DB  3, 2, 1    ; taso 5: 3 worritia, 2 tankkia, 1 haamu
+    DB  3, 2, 1    ; taso 6+: sama
 WAVE_TABLE_END:
-MAX_WAVE_ENTRIES EQU (WAVE_TABLE_END - WAVE_TABLE) / 2
+MAX_WAVE_ENTRIES EQU (WAVE_TABLE_END - WAVE_TABLE) / 3
 
 ; =============================================================================
 ; RAND — 16-bit LFSR satunnaisluku, ulostulo A
@@ -127,11 +190,19 @@ INIT_ENEMIES:
     LD      HL, TANK_PATS
     LD      B, TANK_PATS_END - TANK_PATS
 .tp:LD      A, (HL) : OUT (VDP_DATA), A : INC HL : DJNZ .tp
-    ; Lataa tutkan piste-pattern (RADAR_DOT_PAT=64, offset 512, tank-patternien jälkeen)
+    ; Lataa tutkan piste-pattern (RADAR_DOT_PAT=68, tank-patternien jälkeen).
+    ; 16x16-tila varaa 4 patternia vaikka piirretään vain 1 — ladataan koko lohko.
     LD      HL, VRAM_SPRITE_PAT + RADAR_DOT_PAT*8 : CALL VDP_SETW
     LD      HL, RADAR_DOT_PATS
-    LD      B, 8
+    LD      B, RADAR_DOT_PATS_END - RADAR_DOT_PATS
 .rdp:LD     A, (HL) : OUT (VDP_DATA), A : INC HL : DJNZ .rdp
+    ; Lataa Haamu-patternit (GHOST_PAT_BASE=72, tutkan pisteen 4 patternin jälkeen)
+    ; Koko on tasan 256 tavua — DJNZ+LD B ei sovi (B on 8-bittinen), käytetään BC-laskuria
+    LD      HL, VRAM_SPRITE_PAT + GHOST_PAT_BASE*8 : CALL VDP_SETW
+    LD      HL, GHOST_PATS
+    LD      BC, GHOST_PATS_END - GHOST_PATS
+.gp: LD     A, (HL) : OUT (VDP_DATA), A : INC HL
+    DEC     BC : LD A, B : OR C : JR NZ, .gp
 
     ; Nollaa viholliset ja niiden ammukset
     LD      HL, ENEMIES
@@ -160,6 +231,14 @@ SPAWN_TANK:
     CALL    PICK_SPAWN_POS
     LD      (IX+2), DIR_RIGHT
     LD      (IX+3), ENEMY_TANK
+    LD      (IX+4), 1
+    RET
+
+; SPAWN_GHOST — luo Haamu IX-osoitteeseen NAVMAP-pisteiden kautta
+SPAWN_GHOST:
+    CALL    PICK_SPAWN_POS
+    LD      (IX+2), DIR_RIGHT
+    LD      (IX+3), ENEMY_GHOST
     LD      (IX+4), 1
     RET
 
@@ -568,6 +647,139 @@ UPDATE_TANK:
     RET
 
 ; =============================================================================
+; UPDATE_GHOST — liikuta yksi haamu pelaajaa kohti (IX = data)
+; Sama logiikka kuin UPDATE_TANK, mutta GHOST_SPEED (2 vs. ENEMY_SPEED 1).
+; Haamu ei ammu — TANK_TRY_SHOOT:ia ei kutsuta tälle tyypille.
+; =============================================================================
+UPDATE_GHOST:
+    LD      A, (IX+2) : LD D, A     ; D = suunta
+
+    CP      DIR_UP : JR NZ, .tnup
+    LD      A, (IX+1) : SUB GHOST_SPEED : CP 8 : JP C, .tchg
+    LD      E, A
+    LD      B, (IX+0) : LD C, E : CALL IS_WALL : JP NZ, .tchg
+    LD      A, (IX+0) : ADD A, 15 : LD B, A : LD C, E : CALL IS_WALL : JP NZ, .tchg
+    LD      (IX+1), E : JP .tmt
+.tnup:
+    CP      DIR_DOWN : JR NZ, .tndn
+    LD      A, (IX+1) : ADD A, GHOST_SPEED : CP 153 : JP NC, .tchg
+    LD      E, A
+    LD      B, (IX+0) : LD A, E : ADD A, 15 : LD C, A : CALL IS_WALL : JP NZ, .tchg
+    LD      A, (IX+0) : ADD A, 15 : LD B, A : LD A, E : ADD A, 15 : LD C, A : CALL IS_WALL : JP NZ, .tchg
+    LD      (IX+1), E : JP .tmt
+.tndn:
+    CP      DIR_LEFT : JR NZ, .tnlt
+    LD      A, (IX+0) : SUB GHOST_SPEED : JP C, .tchg
+    LD      E, A
+    LD      B, E : LD C, (IX+1) : CALL IS_WALL : JP NZ, .tchg
+    LD      B, E : LD A, (IX+1) : ADD A, 15 : LD C, A : CALL IS_WALL : JP NZ, .tchg
+    LD      (IX+0), E : JP .tmt
+.tnlt:
+    LD      A, (IX+0) : ADD A, GHOST_SPEED : CP 241 : JP NC, .tchg
+    LD      E, A
+    LD      A, E : ADD A, 15 : LD B, A : LD C, (IX+1) : CALL IS_WALL : JP NZ, .tchg
+    LD      A, E : ADD A, 15 : LD B, A : LD A, (IX+1) : ADD A, 15 : LD C, A : CALL IS_WALL : JP NZ, .tchg
+    LD      (IX+0), E
+
+.tmt:
+    ; Grid-raja: käänny pelaajaa kohti NAVMAP:in avulla — ei taaksepäin
+    LD      A, (IX+0) : AND 0x07 : RET NZ
+    LD      A, (IX+1) : AND 0x07 : RET NZ
+    CALL    TANK_TOWARD_PLAYER   ; A = preferred direction
+    LD      D, A
+    ; Suodata: käänny vain jos preferenssi on kohtisuora nykyiseen akseliin
+    LD      A, (IX+2) : AND 0x02
+    LD      B, A
+    LD      A, D : AND 0x02
+    CP      B : RET Z            ; sama akseli → jatka suoraan
+    ; NAVMAP-haku
+    LD      A, (IX+1) : SRL A : SRL A : SRL A
+    LD      H, 0 : LD L, A
+    ADD     HL, HL : ADD HL, HL : ADD HL, HL : ADD HL, HL : ADD HL, HL
+    LD      A, (IX+0) : SRL A : SRL A : SRL A
+    ADD     A, L : LD L, A
+    LD      A, L : ADD A, LOW NAVMAP : LD L, A
+    LD      A, H : ADC A, HIGH NAVMAP : LD H, A
+    LD      A, (HL)
+    LD      B, A             ; B = saatavilla olevat suunnat (NAVMAP-bitit)
+    ; Onko preferenssisuunta D auki? (bit D = bitti suuntanumerolla)
+    LD      A, D : CP DIR_LEFT : JR C, .tmt_r
+    CP      DIR_UP   : JR C, .tmt_l
+    CP      DIR_DOWN : JR C, .tmt_u
+    BIT     3, B : RET Z : LD (IX+2), D : RET   ; DOWN
+.tmt_u:
+    BIT     2, B : RET Z : LD (IX+2), D : RET   ; UP
+.tmt_l:
+    BIT     1, B : RET Z : LD (IX+2), D : RET   ; LEFT
+.tmt_r:
+    BIT     0, B : RET Z : LD (IX+2), D : RET   ; RIGHT
+
+.tchg:
+    ; Seinä edessä — laske suunta pelaajaa kohti ja kokeile sitä
+    CALL    TANK_TOWARD_PLAYER
+    LD      D, A
+
+.ttry:
+    ; Kokeile suuntaa D — tarkista MOLEMMAT kulmat (sama kuin pääliikuntakoodi)
+    LD      A, D : CP DIR_UP : JR NZ, .ttu_nd
+    LD      A, (IX+1) : SUB GHOST_SPEED : CP 8 : JP C, .talt
+    LD      E, A
+    LD      B, (IX+0) : LD C, E : CALL IS_WALL : JP NZ, .talt
+    LD      A, (IX+0) : ADD A, 15 : LD B, A : LD C, E : CALL IS_WALL : JP NZ, .talt
+    LD      (IX+2), D : RET
+.ttu_nd:
+    CP      DIR_DOWN : JR NZ, .ttu_nl
+    LD      A, (IX+1) : ADD A, GHOST_SPEED : CP 153 : JP NC, .talt
+    LD      E, A
+    LD      B, (IX+0) : LD A, E : ADD A, 15 : LD C, A : CALL IS_WALL : JP NZ, .talt
+    LD      A, (IX+0) : ADD A, 15 : LD B, A : LD A, E : ADD A, 15 : LD C, A : CALL IS_WALL : JP NZ, .talt
+    LD      (IX+2), D : RET
+.ttu_nl:
+    CP      DIR_LEFT : JR NZ, .ttu_nr
+    LD      A, (IX+0) : SUB GHOST_SPEED : JP C, .talt
+    LD      E, A
+    LD      B, E : LD C, (IX+1) : CALL IS_WALL : JP NZ, .talt
+    LD      B, E : LD A, (IX+1) : ADD A, 15 : LD C, A : CALL IS_WALL : JP NZ, .talt
+    LD      (IX+2), D : RET
+.ttu_nr:
+    LD      A, (IX+0) : ADD A, GHOST_SPEED : CP 241 : JP NC, .talt
+    LD      E, A
+    LD      A, E : ADD A, 15 : LD B, A : LD C, (IX+1) : CALL IS_WALL : JP NZ, .talt
+    LD      A, E : ADD A, 15 : LD B, A : LD A, (IX+1) : ADD A, 15 : LD C, A : CALL IS_WALL : JP NZ, .talt
+    LD      (IX+2), D : RET
+
+.talt:
+    ; Preferenssisuunta tukossa — kokeile satunnaisia
+    LD      B, 12
+.trand:
+    PUSH    BC
+    CALL    RAND : AND 0x03 : LD D, A
+    CP      DIR_UP : JR NZ, .tr_nd
+    LD      A, (IX+1) : SUB GHOST_SPEED : CP 8 : JR C, .tr_bad
+    LD      E, A : LD B, (IX+0) : LD C, E : CALL IS_WALL : JR NZ, .tr_bad
+    JR      .tr_ok
+.tr_nd:
+    CP      DIR_DOWN : JR NZ, .tr_nl
+    LD      A, (IX+1) : ADD A, GHOST_SPEED : CP 153 : JR NC, .tr_bad
+    LD      E, A : LD B, (IX+0) : LD A, E : ADD A, 15 : LD C, A : CALL IS_WALL : JR NZ, .tr_bad
+    JR      .tr_ok
+.tr_nl:
+    CP      DIR_LEFT : JR NZ, .tr_nr
+    LD      A, (IX+0) : SUB GHOST_SPEED : JR C, .tr_bad
+    LD      E, A : LD B, E : LD A, (IX+1) : ADD A, 8 : LD C, A : CALL IS_WALL : JR NZ, .tr_bad
+    JR      .tr_ok
+.tr_nr:
+    LD      A, (IX+0) : ADD A, GHOST_SPEED : CP 241 : JR NC, .tr_bad
+    LD      E, A : LD A, E : ADD A, 15 : LD B, A
+    LD      A, (IX+1) : ADD A, 8 : LD C, A : CALL IS_WALL : JR NZ, .tr_bad
+.tr_ok:
+    LD      (IX+2), D
+    POP     BC : RET
+.tr_bad:
+    POP     BC : DJNZ .trand
+    RET
+
+; =============================================================================
 ; TANK_TRY_SHOOT — ampuu molempiin suuntiin kun samalla rivillä/sarakkeella
 ; Sisääntulo: IX = tankki-data
 ; =============================================================================
@@ -648,9 +860,13 @@ UPDATE_ENEMIES:
     LD      A, D : CALL ENEMY_TRY_SHOOT
     JR      .skip
 .chk_tank:
-    CP      ENEMY_TANK : JR NZ, .skip
+    CP      ENEMY_TANK : JR NZ, .chk_ghost
     PUSH    DE : CALL UPDATE_TANK : POP DE
     CALL    TANK_TRY_SHOOT
+    JR      .skip
+.chk_ghost:
+    CP      ENEMY_GHOST : JR NZ, .skip
+    CALL    UPDATE_GHOST          ; ei ammu
 .skip:
     POP     DE : INC D
     LD      BC, ENEMY_SIZE : ADD IX, BC
@@ -669,6 +885,7 @@ DRAW_ENEMIES:
 
 .loop:
     LD      A, (IX+4) : OR A : JR Z, .hide
+    LD      A, (IX+3) : CP ENEMY_GHOST : JR Z, .dghost
     LD      A, (IX+1) : DEC A : OUT (VDP_DATA), A    ; Y
     LD      A, (IX+0) : OUT (VDP_DATA), A              ; X
     LD      A, (IX+3) : CP ENEMY_TANK : JR Z, .dtank
@@ -682,6 +899,22 @@ DRAW_ENEMIES:
     LD      A, TANK_COLOR : OUT (VDP_DATA), A
     JR      .next
 
+.dghost:
+    ; Haamu näkyy vain kun pelaaja on samalla rivillä/sarakkeella
+    CALL    GHOST_VISIBLE
+    OR      A : JR Z, .hide
+    LD      A, (IX+1) : DEC A : OUT (VDP_DATA), A    ; Y
+    LD      A, (IX+0) : OUT (VDP_DATA), A              ; X
+    ; Pattern: suunta*2 + animaatiokehys (FRAME_CTR bitti 3, vaihtuu 8 framen välein)
+    ; HUOM: käytä C:tä, ei B:tä — B on tämän silmukan DJNZ-laskuri (MAX_ENEMIES)
+    LD      A, (IX+2) : ADD A, A : LD C, A
+    LD      A, (FRAME_CTR) : SRL A : SRL A : SRL A : AND 0x01
+    ADD     A, C
+    LD      HL, GHOST_DIR_PAT : ADD A, L : LD L, A : LD A, (HL)
+    OUT     (VDP_DATA), A
+    LD      A, GHOST_COLOR : OUT (VDP_DATA), A
+    JR      .next
+
 .hide:
     LD      A, 0xD8 : OUT (VDP_DATA), A
     XOR     A : OUT (VDP_DATA), A : OUT (VDP_DATA), A : OUT (VDP_DATA), A
@@ -692,9 +925,44 @@ DRAW_ENEMIES:
     RET
 
 ; =============================================================================
+; GHOST_VISIBLE — onko haamu (IX) näkyvissä? (elossaoleva pelaaja samalla
+; rivillä TAI sarakkeella, toleranssi <4px)
+; Ulostulo: A=1 (näkyvissä) tai A=0 (piilossa). Tuhoaa: C.
+; HUOM: ei saa käyttää B:tä eikä D/E:tä — DRAW_ENEMIES:n kutsuva silmukka
+; pitää B:ssä DJNZ-laskurin ja DE:ssä pysyvän ENEMY_SIZE-askeleen (ADD IX,DE
+; silmukan lopussa) — kumpaakaan ei saa sotkea.
+; =============================================================================
+GHOST_VISIBLE:
+    LD      A, (P1_DEAD_TMR) : OR A : JR NZ, .gv_p2
+    LD      A, (P1_LIVES) : OR A : JR Z, .gv_p2
+    LD      A, (P1_Y) : LD C, A : LD A, (IX+1) : SUB C
+    JP      P, .gv_p1y : NEG
+.gv_p1y:
+    CP      4 : JR C, .gv_yes
+    LD      A, (P1_X) : LD C, A : LD A, (IX+0) : SUB C
+    JP      P, .gv_p1x : NEG
+.gv_p1x:
+    CP      4 : JR C, .gv_yes
+.gv_p2:
+    LD      A, (P2_DEAD_TMR) : OR A : JR NZ, .gv_no
+    LD      A, (P2_LIVES) : OR A : JR Z, .gv_no
+    LD      A, (P2_Y) : LD C, A : LD A, (IX+1) : SUB C
+    JP      P, .gv_p2y : NEG
+.gv_p2y:
+    CP      4 : JR C, .gv_yes
+    LD      A, (P2_X) : LD C, A : LD A, (IX+0) : SUB C
+    JP      P, .gv_p2x : NEG
+.gv_p2x:
+    CP      4 : JR C, .gv_yes
+.gv_no:
+    XOR     A : RET
+.gv_yes:
+    LD      A, 1 : RET
+
+; =============================================================================
 ; DRAW_RADAR — piirtää vihollisten sijainnit tutkaan spriteinä (spritet
 ; RADAR_SPRITE_BASE..+5, yksi per ENEMIES-slotti). Kehys (hud.asm) on kiinteä,
-; tämä piirtää vain pisteet oikean värisinä (WORRIT_COLOR/TANK_COLOR).
+; tämä piirtää vain pisteet oikean värisinä (WORRIT/TANK/GHOST_COLOR).
 ; 1 pelikentän tile = 1 pikseli, 1px alaspäin siirrettynä keskitystä varten.
 ; =============================================================================
 DRAW_RADAR:
@@ -715,11 +983,14 @@ DRAW_RADAR:
 
     LD      A, RADAR_DOT_PAT : OUT (VDP_DATA), A
 
-    ; Väri: worrit=keltainen, tank=magenta
+    ; Väri: worrit=keltainen, tank=magenta, ghost=valkoinen
     LD      A, (IX+3) : CP ENEMY_TANK : JR Z, .rtankcol
+    CP      ENEMY_GHOST : JR Z, .rghostcol
     LD      A, WORRIT_COLOR : JR .rcolout
 .rtankcol:
-    LD      A, TANK_COLOR
+    LD      A, TANK_COLOR : JR .rcolout
+.rghostcol:
+    LD      A, GHOST_COLOR
 .rcolout:
     OUT     (VDP_DATA), A
     JR      .rnext
@@ -1013,14 +1284,27 @@ SPAWN_ENEMIES_FOR_LEVEL:
     CP      MAX_WAVE_ENTRIES : JR C, .wt_ok
     LD      A, MAX_WAVE_ENTRIES - 1         ; leikkaa viimeiseen riviin
 .wt_ok:
-    ADD     A, A                             ; 2 tavua per merkintä
+    ; indeksi * 3 (3 tavua per merkintä: worritit, tankit, haamut)
+    LD      B, A : ADD A, A : ADD A, B
     LD      HL, WAVE_TABLE
     ADD     A, L : LD L, A
     LD      A, H : ADC A, 0 : LD H, A
-    LD      B, (HL) : INC HL : LD C, (HL)  ; B = worritit, C = tankit
+    LD      B, (HL) : INC HL : LD C, (HL) : INC HL : LD A, (HL)
+                                    ; B = worritit, C = tankit, A = haamut
 
     LD      IX, ENEMIES
 
+    ; Spawnaa haamut ensin (A tuoreena ennen kuin B/C käytetään omissa silmukoissaan)
+    OR      A : JR Z, .sw_tanks
+    LD      D, A
+.sw_ghost:
+    PUSH    BC : PUSH    DE
+    CALL    SPAWN_GHOST
+    LD      BC, ENEMY_SIZE : ADD IX, BC
+    POP     DE : POP     BC
+    DEC     D : JR NZ, .sw_ghost
+
+.sw_tanks:
     ; Spawnaa tankit
     LD      A, C : OR A : JR Z, .sw_worrits
     LD      D, C

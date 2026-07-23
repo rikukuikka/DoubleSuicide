@@ -33,18 +33,22 @@ openmsx -machine C-BIOS_MSX1 -cart build/DoubleSuicide.rom -joytype1 keys
 - **Törmäystarkistus** — pikselitarkka seinäkollisio 16×16 sprite-alueelle (4 kulmapistettä)
 - **Snap-to-grid** — automaattinen kohdistus 8px-ruudukkoon risteyksessä käännettäessä
 - **Portaalit** — vasemman ja oikean reunan aukot teleporttaavat toiselle puolelle
-- **Worrit-viholliset** — 4-suuntaiset spritet, satunnaissuuntainen AI, välttelee takaisin kääntymistä; liikkuvat nopeudella 1 (pelaaja nopeudella 2)
-- **Vihollisten ampuminen** — Worrit ampuu kun on samalla rivillä tai sarakkeella kuin pelaaja (50% todennäköisyys), vain suuntaan jota kohti liikkuu; parittomat viholliset ampuvat P1:tä, parilliset P2:ta (yksinpelissä kaikki P1:tä)
+- **Worrit-viholliset** — 4-suuntaiset spritet, satunnaissuuntainen AI (25% mahdollisuus harkita kääntymistä risteyksessä, muuten jatkaa suoraan), välttelee takaisin kääntymistä; liikkuvat nopeudella 1 (pelaaja nopeudella 2)
+- **Tankki-vihollinen** — jahtaa lähintä elossaolevaa pelaajaa (dx/dy-vertailu suunnan valintaan), ampuu molempiin suuntiin kun samalla rivillä/sarakkeella liikkumisakselinsa mukaan
+- **Haamu-vihollinen** — jahtaa pelaajaa kuten tankki mutta nopeudella 2, ei ammu koskaan; **näkyy vain kun elossaoleva pelaaja on samalla rivillä tai sarakkeella** (muuten piilossa), 2-frame kävelyanimaatio
+- **Vihollisten ampuminen** — Worrit/Tankki ampuvat kun samalla rivillä tai sarakkeella kuin pelaaja (50% todennäköisyys), vain suuntaan jota kohti liikkuu; parittomat viholliset ampuvat P1:tä, parilliset P2:ta (yksinpelissä kaikki P1:tä)
+- **NAVMAP-pohjainen spawnaus** — viholliset syntyvät valmiiksi lasketuille risteyspisteille (ei enää arpo-ja-kokeile-seinää), vähintään 30px päähän pelaajista ja 16px päähän toisistaan; 64 yritystä + varmuudella-toimiva NAVMAP-skannaus fallbackina
+- **WAVE_TABLE** — jokaisen tason vihollismäärät (worritit/tankit/haamut) määritellään yhdessä helposti muokattavassa taulukossa `enemy.asm`:ssä; viimeinen rivi toistuu kaikilla myöhemmillä tasoilla
+- **Tutka (radar)** — HUD:in keskellä 32×24px alue, jossa koko pelikentän tile vastaa yhtä pikseliä; vihollisten sijainnit spriteinä oikean tyypin värillä (Worrit keltainen, Tankki magenta, Haamu valkoinen — näkyy tutkassa vaikka piilossa kentällä), sininen kehys kiinteinä nametable-tileinä
 - **Ammukset** — yksi ammus per pelaaja, seinätarkistus keskipisteellä, tappaa Worritin
 - **Vihollisten ammukset** — puolet hitaampia kuin pelaajan, eivät ylitä HUD-aluetta
-- **Räjähdykset** — 2-frame animaatio kun Worrit tuhoutuu
+- **Räjähdykset** — 2-frame animaatio kun vihollinen tuhoutuu
 - **PSG-ääni** — kanava A: ampuminen, kanava B: räjähdys, kanava C: taustamusiikki (sahalaita-envelope)
 - **Pelaajan kuolema** — vihollisen kosketus tai ammus tappaa, vilkkumisanimaatio, respawn aloituspaikassa
 - **3 elämää** per pelaaja, peli loppuu kun elämät = 0
 - **Game over -ruutu** — 144×52 px kuva ladataan bank 1:een, kaikkien pelaajien kuoltua; tulinäppäimen vapautus palaa otsikkoruutuun
 - **Aaltojärjestelmä** — uusi aalto syntyy kun kaikki viholliset tuhottu, 1.5s viive välissä
-- **Vaikeustason nousu** — vihollisten määrä kasvaa: 3 → 4 → 5 → 6 (max)
-- **HUD** — pisteet (BCD, 100 per tappo), elämät ja värikoodatut pelaajaikonit alarivillä
+- **HUD** — pisteet (BCD, 100 per tappo), elämät, värikoodatut pelaajaikonit ja tutka alarivillä
 
 ## Tiedostorakenne
 
@@ -56,10 +60,10 @@ openmsx -machine C-BIOS_MSX1 -cart build/DoubleSuicide.rom -joytype1 keys
 | `maze.asm`      | Kenttädata (leveät käytävät), IS_WALL, DRAW_MAZE, INIT_NAVMAP |
 | `input.asm`     | Näppäimistö- ja joystick-luku (PSG R14/R15)                   |
 | `player.asm`    | 16×16 spritet, animaatio, liikkuminen, portaalit, kuolema      |
-| `enemy.asm`     | Worrit AI, ampuminen, LFSR-satunnaisluku, spawn, räjähdykset   |
+| `enemy.asm`     | Worrit/Tankki/Haamu AI, ampuminen, LFSR-satunnaisluku, NAVMAP-spawn, WAVE_TABLE, tutkan piirto, räjähdykset |
 | `bullet.asm`    | Pelaajan ammukset, törmäys vihollisiin, pisteytys              |
 | `sound.asm`     | PSG AY-3-8910 taustamusiikki + ääniefektit                    |
-| `hud.asm`       | Numerotileet, pisteet, elämänäyttö                            |
+| `hud.asm`       | Numerotileet, pisteet, elämänäyttö, tutkan kehystileet         |
 | `title.asm`     | Otsikkoruutu, logo, 1P/2P-valinta                             |
 | `gameover.asm`  | Game over -ruutu, CHECK_GAME_OVER, kuvatile-data (bank 1)     |
 
@@ -67,16 +71,33 @@ openmsx -machine C-BIOS_MSX1 -cart build/DoubleSuicide.rom -joytype1 keys
 
 ### Sprite pattern layout (VRAM 0x3800+)
 
-| Offset    | Pattern # | Sisältö                    |
-|-----------|-----------|----------------------------|
-| 0–255     | 0–28      | Pelaaja: 4 suuntaa × 2 framea |
-| 256–287   | 32        | Worrit oikea               |
-| 288–319   | 36        | Worrit vasen               |
-| 320–351   | 40        | Worrit alas                |
-| 352–383   | 44        | Worrit ylös                |
-| 384–415   | 48        | Ammus (pelaaja)            |
-| 416–447   | 52        | Räjähdys frame 1           |
-| 448–479   | 56        | Räjähdys frame 2           |
+VDP on 16×16-sprite-tilassa (R#1 SIZE-bitti) — **jokainen sprite varaa aina
+4 peräkkäistä pattern-numeroa** (32 tavua), vaikka piirrettäisiin vain yksi
+8×8-neljännes. Kaikki alla olevat pattern-pohjat ovat siksi 4:n monikertoja.
+
+| Pattern # | Sisältö                              |
+|-----------|---------------------------------------|
+| 0–31      | Pelaaja: 4 suuntaa × 2 framea         |
+| 32–47     | Worrit: oikea(32) / vasen(36) / alas(40) / ylös(44) |
+| 48–51     | Ammus (pelaaja, myös ENEMY_BULLET_PAT) |
+| 52–55     | Räjähdys frame 1                      |
+| 56–59     | Räjähdys frame 2                      |
+| 60–67     | Tankki: vaaka(60) / pysty(64)         |
+| 68–71     | Tutkan piste (vain neljännes 68 käytössä, loput tyhjät varauksen vuoksi) |
+| 72–103    | Haamu: 4 suuntaa × 2 framea (`GHOST_DIR_PAT`-taulukko `enemy.asm`:ssä) |
+
+### Sprite attribute table (32 spriteä, VRAM 0x1B00+)
+
+| Sprite # | Sisältö                        |
+|----------|--------------------------------|
+| 0–1      | Pelaajat (P1, P2)              |
+| 2–7      | Viholliset (Worrit/Tankki/Haamu, ENEMIES-taulukko) |
+| 8–9      | Pelaajan ammukset              |
+| 10–11    | Räjähdykset                    |
+| 12–17    | Vihollisten ammukset           |
+| 18–19    | Tankin ammukset                |
+| 20–25    | Tutkan pisteet (1 per ENEMIES-slotti) |
+| 26–31    | Vapaana                        |
 
 ### RAM-kartta (0xC000+)
 
@@ -89,7 +110,7 @@ openmsx -machine C-BIOS_MSX1 -cart build/DoubleSuicide.rom -joytype1 keys
 | C00D          | FRAME_CTR        | Frame-laskuri animaatioille           |
 | C00E          | LEVEL            | Kentän numero (1+)                    |
 | C00F          | WAVE_TIMER       | Aaltojen välinen viive                |
-| C010–C03F     | ENEMIES          | 6 vihollista × 8 tavua               |
+| C010–C03F     | ENEMIES          | 6 vihollista × 8 tavua (Worrit/Tankki/Haamu, tyyppi IX+3:ssa) |
 | C040–C041     | RAND_SEED        | 16-bit LFSR-siemen                    |
 | C050–C05F     | BULLETS          | 2 pelaajan ammusta × 8 tavua         |
 | C060–C062     | SFX_A_CTR …      | Ääniefektien laskurit                 |
@@ -111,6 +132,8 @@ openmsx -machine C-BIOS_MSX1 -cart build/DoubleSuicide.rom -joytype1 keys
 8. **DJNZ max 128 tavua** — pitkissä silmukoissa DEC B / JP NZ
 9. **16×16 törmäystarkistus** — kaikki 4 kulmaa (+15 eikä +7), ammukselle keskipiste (+8)
 10. **VDP-kirjoitukset heti vblankin jälkeen** — kaikki DRAW_* -kutsut MAINLOOP:in alussa ennen päivityksiä; muuten kirjoitukset voivat osua aktiiviseen skannaukseen ja korruptoida kuvan
+11. **16×16-tila varaa 4 patternia per sprite AINA** — myös yhden neljänneksen "pisteille"; jos seuraava ladattu sprite alkaa väärästä (ei-4-tasatusta) kohdasta, sen data vuotaa edellisen spriten näkymättömiin neljänneksiin ja näkyy niiden päällä
+12. **Älä koske DJNZ-silmukan laskurirekisteriin aliohjelmasta** — jos silmukka pitää laskurin B:ssä (tai pysyvän arvon DE:ssä, esim. `ADD IX,DE`-askel), mikä tahansa silmukan sisältä kutsuttu aliohjelma joka käyttää samaa rekisteriä väliaikaismuistina ilman PUSH/POP:ia ajaa silmukan sekaisin — DJNZ toistuu väärän monta kertaa ja osoitin (esim. IX) karkaa taulukon ulkopuolelle. Käytä C:tä tms. tarkistetusti vapaata rekisteriä
 
 ### Työkalut
 
@@ -120,6 +143,6 @@ openmsx -machine C-BIOS_MSX1 -cart build/DoubleSuicide.rom -joytype1 keys
 
 ## TODO
 
-- [ ] Lisää vihollistyyppejä (Garwor, Thorwar, Worluk, Wizard)
+- [x] Lisää vihollistyyppejä — Tankki ja Haamu lisätty; Garwor/Thorwar/Worluk/Wizard yhä puuttuvat
 - [ ] Useampia kenttälayouteja
-- [ ] Vihollisten nopeuden kasvu tasojen myötä
+- [ ] Vihollisten nopeuden kasvu tasojen myötä (nyt kiinteä nopeus per tyyppi)
