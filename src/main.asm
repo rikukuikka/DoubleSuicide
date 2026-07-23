@@ -59,6 +59,7 @@ INIT:
     CALL    VDP_FILL
     CALL    WAIT_VBLANK                 ; synkronoi VDP-kirjoitus vblankiin
     CALL    DRAW_HUD
+    CALL    DRAW_RADAR
 
     ; Pysytään DI-tilassa: C-BIOS:in V-blank-keskeytys ei aja eikä
     ; sotke PSG:tä. Frame-synkka tehdään pollaamalla VDP:n status-rekisteriä.
@@ -75,6 +76,7 @@ MAINLOOP:
     CALL    DRAW_TANK_BULLETS
     CALL    DRAW_EXPLOSIONS
     CALL    DRAW_HUD
+    CALL    DRAW_RADAR
 
     CALL    READ_INPUTS
 

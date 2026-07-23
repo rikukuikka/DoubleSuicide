@@ -62,6 +62,11 @@ TANK_PATS:
 
 TANK_PATS_END:
 
+; Tutkan piste-sprite (8x8, vain 2x2 pikseliä vasemmassa yläkulmassa —
+; sprite sijoitetaan niin että tämä kulma osuu oikeaan kohtaan)
+RADAR_DOT_PATS:
+    DB $C0,$C0,$00,$00,$00,$00,$00,$00
+
     ALIGN   4
 WORRIT_DIR_PAT:
     DB 32, 36, 44, 40   ; DIR_RIGHT=0, DIR_LEFT=1, DIR_UP=2, DIR_DOWN=3
@@ -122,6 +127,11 @@ INIT_ENEMIES:
     LD      HL, TANK_PATS
     LD      B, TANK_PATS_END - TANK_PATS
 .tp:LD      A, (HL) : OUT (VDP_DATA), A : INC HL : DJNZ .tp
+    ; Lataa tutkan piste-pattern (RADAR_DOT_PAT=64, offset 512, tank-patternien jälkeen)
+    LD      HL, VRAM_SPRITE_PAT + RADAR_DOT_PAT*8 : CALL VDP_SETW
+    LD      HL, RADAR_DOT_PATS
+    LD      B, 8
+.rdp:LD     A, (HL) : OUT (VDP_DATA), A : INC HL : DJNZ .rdp
 
     ; Nollaa viholliset ja niiden ammukset
     LD      HL, ENEMIES
@@ -312,7 +322,7 @@ UPDATE_WORRIT:
     LD      A, (IX+0) : AND 0x07 : RET NZ
     LD      A, (IX+1) : AND 0x07 : RET NZ
     ; 50% todennäköisyysportti
-    CALL    RAND : AND 0x01 : RET NZ
+    CALL    RAND : AND 0x03 : RET NZ
 
     ; NAVMAP-haku: indeksi = (Y/8)*32 + (X/8)
     LD      A, (IX+1) : SRL A : SRL A : SRL A   ; A = Y/8 = tiilirivi
@@ -679,6 +689,46 @@ DRAW_ENEMIES:
 .next:
     ADD     IX, DE          ; B (laskuri) ei koske — LD BC,n olisi nollannut B:n
     DJNZ    .loop
+    RET
+
+; =============================================================================
+; DRAW_RADAR — piirtää vihollisten sijainnit tutkaan spriteinä (spritet
+; RADAR_SPRITE_BASE..+5, yksi per ENEMIES-slotti). Kehys (hud.asm) on kiinteä,
+; tämä piirtää vain pisteet oikean värisinä (WORRIT_COLOR/TANK_COLOR).
+; 1 pelikentän tile = 1 pikseli, 1px alaspäin siirrettynä keskitystä varten.
+; =============================================================================
+DRAW_RADAR:
+    LD      IX, ENEMIES
+    LD      HL, VRAM_SPRITE_ATT + RADAR_SPRITE_BASE*4 : CALL VDP_SETW
+    LD      B, MAX_ENEMIES
+.rloop:
+    LD      A, (IX+4) : OR A : JR Z, .rhide
+
+    ; map_row = Y/8 (0-20 kelvollinen, muu ohitetaan)
+    LD      A, (IX+1) : SRL A : SRL A : SRL A
+    CP      21 : JR NC, .rhide
+    ADD     A, RADAR_ORIGIN_Y : OUT (VDP_DATA), A     ; Y (jo Y-1 -sovitettu)
+
+    ; map_col = X/8 (0-31) → sprite X
+    LD      A, (IX+0) : SRL A : SRL A : SRL A
+    ADD     A, RADAR_ORIGIN_X : OUT (VDP_DATA), A
+
+    LD      A, RADAR_DOT_PAT : OUT (VDP_DATA), A
+
+    ; Väri: worrit=keltainen, tank=magenta
+    LD      A, (IX+3) : CP ENEMY_TANK : JR Z, .rtankcol
+    LD      A, WORRIT_COLOR : JR .rcolout
+.rtankcol:
+    LD      A, TANK_COLOR
+.rcolout:
+    OUT     (VDP_DATA), A
+    JR      .rnext
+.rhide:
+    LD      A, 0xD8 : OUT (VDP_DATA), A
+    XOR     A : OUT (VDP_DATA), A : OUT (VDP_DATA), A : OUT (VDP_DATA), A
+.rnext:
+    LD      DE, ENEMY_SIZE : ADD IX, DE
+    DJNZ    .rloop
     RET
 
 ; =============================================================================

@@ -109,3 +109,23 @@ EXPL_PAT1       EQU 52          ; Räjähdys 1 (kirkas) = offset 416
 EXPL_PAT2       EQU 56          ; Räjähdys 2 (haalistuva) = offset 448
 EXPL_COLOR1     EQU 15          ; valkoinen välähdys
 EXPL_COLOR2     EQU 9           ; vaaleanpunainen sammuminen
+
+; Tutka (radar) — HUD:in keskellä, kehys 4x3 tiiltä (32x24px), sisältö spriteinä
+; Reunat ovat kiinteitä nametable-tileitä (DIGIT_PATS, hud.asm):
+;   rivi 21 sarakkeet 14-17 = RADAR_BORDER_TOP, sarakkeet 13/18 = *_WALL-versiot
+;   rivi 22-23 sarakkeet 13/18 = RADAR_BORDER_L/R
+;   rivi 23 sarakkeet 14-17 = RADAR_BORDER_BOTTOM
+; Vihollisten sijainnit piirtää DRAW_RADAR (enemy.asm) spriteillä
+; RADAR_SPRITE_BASE.. (1 sprite per ENEMIES-slotti), värinä vihollisen oma väri.
+; 1 pelikentän tile = 1 pikseli, sijoitus 1px alaspäin siirrettynä (keskitys).
+RADAR_BORDER_TOP    EQU 41      ; yläreuna (rivi 21, sarakkeet 14-17)
+RADAR_BORDER_BOTTOM EQU 42      ; alareuna (rivi 23, sarakkeet 14-17)
+RADAR_BORDER_R      EQU 43      ; oikea laita (rivit 22-23)
+RADAR_BORDER_L      EQU 44      ; vasen laita (rivit 22-23)
+RADAR_BORDER_L_WALL EQU 45      ; vasen laita muurin kohdalla (rivi 21)
+RADAR_BORDER_R_WALL EQU 46      ; oikea laita muurin kohdalla (rivi 21)
+
+RADAR_SPRITE_BASE   EQU 20      ; spritet 20-25 (6 kpl, vapaana)
+RADAR_DOT_PAT       EQU 68      ; uusi pieni piste-pattern (vapaa, tank vie 60-67, ei 60-63)
+RADAR_ORIGIN_X      EQU 112     ; sarake14 * 8
+RADAR_ORIGIN_Y      EQU 168     ; rivi21 * 8, sisältää jo Y-1 -sovituksen

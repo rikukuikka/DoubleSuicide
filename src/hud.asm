@@ -63,6 +63,13 @@ DIGIT_PATS:
     DB #FE,#86,#0C,#18,#30,#60,#C2,#FE  ; 'Z'  ;; UUSI
 ; Ovi-tile
     DB $55,$AA,$00,$00,$00,$00,$00,$00  ; Ylälaita
+; Tutkan laidat
+    DB $FF,$00,$00,$00,$00,$00,$00,$00 ; Ylälaita
+    DB $00,$00,$00,$00,$00,$00,$00,$FF ; Alalaita
+    DB $80,$80,$80,$80,$80,$80,$80,$80 ; Oikea laita
+    DB $01,$01,$01,$01,$01,$01,$01,$01 ; Vasen laita
+    DB $FF,$FF,$FF,$01,$EF,$EF,$EF,$01 ; Vasen laita muurin kohdalla
+    DB $FE,$FE,$FE,$80,$EF,$EF,$EF,$80 ; Oikea laita muurin kohdalla
 
 
 DIGIT_PATS_END:
@@ -99,6 +106,12 @@ INIT_HUD:
     LD      HL, 0x2000 + 16 : CALL LOAD_HUD_COLORS
     LD      HL, 0x2800 + 16 : CALL LOAD_HUD_COLORS
     LD      HL, 0x3000 + 16 : CALL LOAD_HUD_COLORS
+    ; Tutkan reunatileiden väri (sininen mustalla) — vain pankki 2
+    ; Tileet 41-46: reunat (6 tileä, kaikki rivit siniset). Tutkan sisältö
+    ; (vihollisten sijainnit) piirretään DRAW_RADAR:issa spriteillä, ei tileillä.
+    LD      HL, 0x3000 + 41*8 : CALL VDP_SETW
+    LD      B, 6*8 : LD A, 0x41
+.rc1: OUT   (VDP_DATA), A : DJNZ .rc1
     ; Nollaa pisteet
     XOR     A
     LD      (P1_SCORE_H), A : LD (P1_SCORE_L), A
@@ -158,10 +171,25 @@ DRAW_HUD:
     LD      B, 2
     LD      A, OVI_TILE
 .ds1: OUT    (VDP_DATA), A : DJNZ .ds1
-    ; Tile 3-29: seinä (26 kpl) — säilyttää kartan reunan
-    LD      B, 26
+    ; Tile 3-12: seinä (10 kpl)
+    LD      B, 11
     LD      A, 1
 .ws1: OUT   (VDP_DATA), A : DJNZ .ws1
+    ; Tile 13: tutkan vasen laita muurin kohdalla
+ ;   CALL    .vdp_dly
+  ;  LD      A, RADAR_BORDER_L_WALL : OUT (VDP_DATA), A
+    ; Tile 14-17: tutkan yläreuna (kiinteä, sisältö piirretään spriteillä)
+    CALL    .vdp_dly
+    LD      B, 4 : LD A, RADAR_BORDER_TOP
+.rtop21: OUT (VDP_DATA), A : DJNZ .rtop21
+    ; Tile 18: tutkan oikea laita muurin kohdalla
+ ;   CALL    .vdp_dly
+ ;   LD      A, RADAR_BORDER_R_WALL : OUT (VDP_DATA), A
+    ; Tile 19-28: seinä (10 kpl)
+    CALL    .vdp_dly
+    LD      B, 11
+    LD      A, 1
+.ws1b: OUT  (VDP_DATA), A : DJNZ .ws1b
     ; Tile 30-31: ovi (2 kpl)
     LD      B, 2
     LD      A, OVI_TILE
@@ -179,10 +207,25 @@ DRAW_HUD:
 .sp1: OUT    (VDP_DATA), A : DJNZ .sp1
     ; Tile 3: seinä
     LD      A, 1 : OUT (VDP_DATA), A
-    ; Tile 4-28: tyhjä (24 kpl)
-    LD      B, 24
+    ; Tile 4-12: tyhjä (9 kpl)
+    LD      B, 9
     XOR     A
 .sp2: OUT    (VDP_DATA), A : DJNZ .sp2
+    ; Tile 13: tutkan vasen laita
+    CALL    .vdp_dly
+    LD      A, RADAR_BORDER_L : OUT (VDP_DATA), A
+    ; Tile 14-17: tyhjä (tutkan sisältö piirretään spriteillä)
+    CALL    .vdp_dly
+    LD      B, 4 : XOR A
+.rmid22: OUT (VDP_DATA), A : DJNZ .rmid22
+    ; Tile 18: tutkan oikea laita
+    CALL    .vdp_dly
+    LD      A, RADAR_BORDER_R : OUT (VDP_DATA), A
+    ; Tile 19-27: tyhjä (9 kpl)
+    CALL    .vdp_dly
+    LD      B, 9
+    XOR     A
+.sp2b: OUT   (VDP_DATA), A : DJNZ .sp2b
     ; Tile 29: seinä
     LD      A, 1 : OUT (VDP_DATA), A
     ; Tile 30-31: tyhjä (2 kpl)
@@ -221,10 +264,20 @@ DRAW_HUD:
     RRCA : RRCA : RRCA : RRCA : AND 0x0F : ADD A, 2 : OUT (VDP_DATA), A
     NOP
     LD      A, (P1_SCORE_L) : AND 0x0F : ADD A, 2 : OUT (VDP_DATA), A
-    ; Tile 12-19: tyhjä (8 kpl)
-    CALL    .vdp_dly        ; 11T(LD B,8+XOR A)+31T=42T gap ✓
-    LD      B, 8 : XOR A
-.sp5: OUT    (VDP_DATA), A : CALL .vdp_dly : DJNZ .sp5
+    ; Tile 12: tyhjä
+    CALL    .vdp_dly : XOR A : OUT (VDP_DATA), A
+    ; Tile 13: tutkan vasen laita
+    CALL    .vdp_dly
+    LD      A, RADAR_BORDER_L : OUT (VDP_DATA), A
+    ; Tile 14-17: tutkan alareuna (kiinteä, sisältö piirretään spriteillä)
+    CALL    .vdp_dly
+    LD      B, 4 : LD A, RADAR_BORDER_BOTTOM
+.rbot23: OUT (VDP_DATA), A : DJNZ .rbot23
+    ; Tile 18: tutkan oikea laita
+    CALL    .vdp_dly
+    LD      A, RADAR_BORDER_R : OUT (VDP_DATA), A
+    ; Tile 19: tyhjä
+    CALL    .vdp_dly : XOR A : OUT (VDP_DATA), A
     ; Tile 20-23: P2 pisteet
     LD      A, (P2_SCORE_H)
     RRCA : RRCA : RRCA : RRCA : AND 0x0F : ADD A, 2 : OUT (VDP_DATA), A
