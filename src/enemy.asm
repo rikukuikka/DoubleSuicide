@@ -8,7 +8,8 @@
 ;   IX+2: suunta (DIR_*)
 ;   IX+3: tyyppi (ENEMY_WORRIT jne.)
 ;   IX+4: aktiivinen (1=kyllä)
-;   IX+5-7: varattu
+;   IX+5: nopeus (px/frame) — asetetaan SPAWN_*:ssä, liikelogiikka lukee tästä
+;   IX+6-7: varattu
 
 ENEMY_NONE      EQU 0
 ENEMY_WORRIT    EQU 1
@@ -224,6 +225,7 @@ SPAWN_WORRIT:
     CALL    RAND : AND 0x03 : LD (IX+2), A
     LD      (IX+3), ENEMY_WORRIT
     LD      (IX+4), 1
+    LD      (IX+5), ENEMY_SPEED
     RET
 
 ; SPAWN_TANK — luo Tankki IX-osoitteeseen NAVMAP-pisteiden kautta
@@ -232,6 +234,7 @@ SPAWN_TANK:
     LD      (IX+2), DIR_RIGHT
     LD      (IX+3), ENEMY_TANK
     LD      (IX+4), 1
+    LD      (IX+5), ENEMY_SPEED
     RET
 
 ; SPAWN_GHOST — luo Haamu IX-osoitteeseen NAVMAP-pisteiden kautta
@@ -240,6 +243,7 @@ SPAWN_GHOST:
     LD      (IX+2), DIR_RIGHT
     LD      (IX+3), ENEMY_GHOST
     LD      (IX+4), 1
+    LD      (IX+5), GHOST_SPEED
     RET
 
 ; =============================================================================
@@ -362,48 +366,11 @@ PICK_SPAWN_POS:
     RET
 
 ; =============================================================================
-; UPDATE_WORRIT — liikuta yksi Worrit (IX = data)
+; GET_NAVMAP_DIRS — A = NAVMAP[(IX+1)/8 * 32 + (IX+0)/8]
+; Vapaan suunnan bittikartta vihollisen (IX) nykyisestä ruudusta.
+; Tuhoaa vain A ja HL — B, C, D, E säilyvät (kutsujat luottavat tähän).
 ; =============================================================================
-UPDATE_WORRIT:
-    LD      A, (IX+2) : LD D, A     ; D = suunta
-
-    ; Kokeile liikkua nykyiseen suuntaan
-    CP      DIR_UP : JR NZ, .not_up
-    LD      A, (IX+1) : SUB ENEMY_SPEED : CP 8 : JP C, .change
-    LD      E, A
-    LD      B, (IX+0) : LD C, E : CALL IS_WALL : JP NZ, .change
-    LD      A, (IX+0) : ADD A, 15 : LD B, A : LD C, E : CALL IS_WALL : JP NZ, .change
-    LD      (IX+1), E : JP .maybe_turn
-.not_up:
-    CP      DIR_DOWN : JR NZ, .not_down
-    LD      A, (IX+1) : ADD A, ENEMY_SPEED : CP 153 : JP NC, .change
-    LD      E, A
-    LD      B, (IX+0) : LD A, E : ADD A, 15 : LD C, A : CALL IS_WALL : JP NZ, .change
-    LD      A, (IX+0) : ADD A, 15 : LD B, A : LD A, E : ADD A, 15 : LD C, A : CALL IS_WALL : JP NZ, .change
-    LD      (IX+1), E : JP .maybe_turn
-.not_down:
-    CP      DIR_LEFT : JR NZ, .not_left
-    LD      A, (IX+0) : SUB ENEMY_SPEED : JP C, .change
-    LD      E, A
-    LD      B, E : LD C, (IX+1) : CALL IS_WALL : JP NZ, .change
-    LD      B, E : LD A, (IX+1) : ADD A, 15 : LD C, A : CALL IS_WALL : JP NZ, .change
-    LD      (IX+0), E : JP .maybe_turn
-.not_left:
-    ; DIR_RIGHT
-    LD      A, (IX+0) : ADD A, ENEMY_SPEED : CP 241 : JP NC, .change
-    LD      E, A
-    LD      A, E : ADD A, 15 : LD B, A : LD C, (IX+1) : CALL IS_WALL : JP NZ, .change
-    LD      A, E : ADD A, 15 : LD B, A : LD A, (IX+1) : ADD A, 15 : LD C, A : CALL IS_WALL : JP NZ, .change
-    LD      (IX+0), E
-
-.maybe_turn:
-    ; 8px tasaustarkistus — käänny vain tiilirajan kohdalla
-    LD      A, (IX+0) : AND 0x07 : RET NZ
-    LD      A, (IX+1) : AND 0x07 : RET NZ
-    ; 50% todennäköisyysportti
-    CALL    RAND : AND 0x03 : RET NZ
-
-    ; NAVMAP-haku: indeksi = (Y/8)*32 + (X/8)
+GET_NAVMAP_DIRS:
     LD      A, (IX+1) : SRL A : SRL A : SRL A   ; A = Y/8 = tiilirivi
     LD      H, 0 : LD L, A
     ADD     HL, HL : ADD HL, HL : ADD HL, HL : ADD HL, HL : ADD HL, HL   ; rivi*32
@@ -411,7 +378,85 @@ UPDATE_WORRIT:
     ADD     A, L : LD L, A
     LD      A, L : ADD A, LOW NAVMAP : LD L, A
     LD      A, H : ADC A, HIGH NAVMAP : LD H, A
-    LD      A, (HL)          ; A = suuntabittikartta
+    LD      A, (HL)
+    RET
+
+; =============================================================================
+; RANDOM_TURN — seinä edessä: kokeile satunnaisia suuntia (16 yritystä)
+; Asettaa (IX+2) jos vapaa suunta löytyy. Nopeus luetaan (IX+5):stä.
+; Yhteinen Worritille ja Chaserille (tankki/haamu). Tuhoaa A, B, C, D, E.
+; =============================================================================
+RANDOM_TURN:
+    LD      B, 16
+.try:
+    PUSH    BC
+    CALL    RAND : AND 0x03 : LD D, A
+
+    CP      DIR_UP : JR NZ, .tu
+    LD      A, (IX+1) : SUB (IX+5) : CP 8 : JR C, .tbad
+    LD      E, A : LD B, (IX+0) : LD C, E : CALL IS_WALL : JR NZ, .tbad
+    JR      .tok
+.tu:CP      DIR_DOWN : JR NZ, .td
+    LD      A, (IX+1) : ADD A, (IX+5) : CP 153 : JR NC, .tbad
+    LD      E, A : LD B, (IX+0) : LD A, E : ADD A, 15 : LD C, A : CALL IS_WALL : JR NZ, .tbad
+    JR      .tok
+.td:CP      DIR_LEFT : JR NZ, .tl
+    LD      A, (IX+0) : SUB (IX+5) : JR C, .tbad
+    LD      E, A : LD B, E : LD A, (IX+1) : ADD A, 8 : LD C, A : CALL IS_WALL : JR NZ, .tbad
+    JR      .tok
+.tl:LD      A, (IX+0) : ADD A, (IX+5) : CP 241 : JR NC, .tbad
+    LD      E, A : LD A, E : ADD A, 15 : LD B, A
+    LD      A, (IX+1) : ADD A, 8 : LD C, A : CALL IS_WALL : JR NZ, .tbad
+.tok:
+    LD      (IX+2), D
+    POP     BC : RET
+.tbad:
+    POP     BC : DJNZ .try
+    RET
+
+; =============================================================================
+; UPDATE_WORRIT — liikuta yksi Worrit (IX = data), nopeus (IX+5)
+; =============================================================================
+UPDATE_WORRIT:
+    LD      A, (IX+2) : LD D, A     ; D = suunta
+
+    ; Kokeile liikkua nykyiseen suuntaan — tukossa → RANDOM_TURN
+    CP      DIR_UP : JR NZ, .not_up
+    LD      A, (IX+1) : SUB (IX+5) : CP 8 : JP C, RANDOM_TURN
+    LD      E, A
+    LD      B, (IX+0) : LD C, E : CALL IS_WALL : JP NZ, RANDOM_TURN
+    LD      A, (IX+0) : ADD A, 15 : LD B, A : LD C, E : CALL IS_WALL : JP NZ, RANDOM_TURN
+    LD      (IX+1), E : JP .maybe_turn
+.not_up:
+    CP      DIR_DOWN : JR NZ, .not_down
+    LD      A, (IX+1) : ADD A, (IX+5) : CP 153 : JP NC, RANDOM_TURN
+    LD      E, A
+    LD      B, (IX+0) : LD A, E : ADD A, 15 : LD C, A : CALL IS_WALL : JP NZ, RANDOM_TURN
+    LD      A, (IX+0) : ADD A, 15 : LD B, A : LD A, E : ADD A, 15 : LD C, A : CALL IS_WALL : JP NZ, RANDOM_TURN
+    LD      (IX+1), E : JP .maybe_turn
+.not_down:
+    CP      DIR_LEFT : JR NZ, .not_left
+    LD      A, (IX+0) : SUB (IX+5) : JP C, RANDOM_TURN
+    LD      E, A
+    LD      B, E : LD C, (IX+1) : CALL IS_WALL : JP NZ, RANDOM_TURN
+    LD      B, E : LD A, (IX+1) : ADD A, 15 : LD C, A : CALL IS_WALL : JP NZ, RANDOM_TURN
+    LD      (IX+0), E : JP .maybe_turn
+.not_left:
+    ; DIR_RIGHT
+    LD      A, (IX+0) : ADD A, (IX+5) : CP 241 : JP NC, RANDOM_TURN
+    LD      E, A
+    LD      A, E : ADD A, 15 : LD B, A : LD C, (IX+1) : CALL IS_WALL : JP NZ, RANDOM_TURN
+    LD      A, E : ADD A, 15 : LD B, A : LD A, (IX+1) : ADD A, 15 : LD C, A : CALL IS_WALL : JP NZ, RANDOM_TURN
+    LD      (IX+0), E
+
+.maybe_turn:
+    ; 8px tasaustarkistus — käänny vain tiilirajan kohdalla
+    LD      A, (IX+0) : AND 0x07 : RET NZ
+    LD      A, (IX+1) : AND 0x07 : RET NZ
+    ; 25% todennäköisyysportti
+    CALL    RAND : AND 0x03 : RET NZ
+
+    CALL    GET_NAVMAP_DIRS  ; A = suuntabittikartta
     OR      A : RET Z        ; ei saatavilla olevia suuntia
 
     ; Suodata kohtisuorat suunnat nykyiselle liikkumissuunnalle
@@ -440,35 +485,6 @@ UPDATE_WORRIT:
     RET
 .mt_b0:
     LD      A, C : LD (IX+2), A            ; bitti0 → RIGHT tai UP
-    RET
-
-.change:
-    ; Seinä edessä — kokeile satunnaisia suuntia
-    LD      B, 16
-.try:
-    PUSH    BC
-    CALL    RAND : AND 0x03 : LD D, A
-
-    CP      DIR_UP : JR NZ, .tu
-    LD      A, (IX+1) : SUB ENEMY_SPEED : CP 8 : JR C, .tbad
-    LD      E, A : LD B, (IX+0) : LD C, E : CALL IS_WALL : JR NZ, .tbad
-    JR      .tok
-.tu:CP      DIR_DOWN : JR NZ, .td
-    LD      A, (IX+1) : ADD A, ENEMY_SPEED : CP 153 : JR NC, .tbad
-    LD      E, A : LD B, (IX+0) : LD A, E : ADD A, 15 : LD C, A : CALL IS_WALL : JR NZ, .tbad
-    JR      .tok
-.td:CP      DIR_LEFT : JR NZ, .tl
-    LD      A, (IX+0) : SUB ENEMY_SPEED : JR C, .tbad
-    LD      E, A : LD B, E : LD A, (IX+1) : ADD A, 8 : LD C, A : CALL IS_WALL : JR NZ, .tbad
-    JR      .tok
-.tl:LD      A, (IX+0) : ADD A, ENEMY_SPEED : CP 241 : JR NC, .tbad
-    LD      E, A : LD A, E : ADD A, 15 : LD B, A
-    LD      A, (IX+1) : ADD A, 8 : LD C, A : CALL IS_WALL : JR NZ, .tbad
-.tok:
-    LD      (IX+2), D
-    POP     BC : RET
-.tbad:
-    POP     BC : DJNZ .try
     RET
 
 ; =============================================================================
@@ -516,33 +532,35 @@ TANK_TOWARD_PLAYER:
     POP     HL : POP DE : RET
 
 ; =============================================================================
-; UPDATE_TANK — liikuta yksi tankki pelaajaa kohti (IX = data)
+; UPDATE_CHASER — liikuta vihollista pelaajaa kohti (IX = data), nopeus (IX+5)
+; Yhteinen tankille ja haamulle: SPAWN_* asettaa nopeuden (IX+5),
+; muuten logiikka on identtinen. Haamulle ei kutsuta TANK_TRY_SHOOT:ia.
 ; =============================================================================
-UPDATE_TANK:
+UPDATE_CHASER:
     LD      A, (IX+2) : LD D, A     ; D = suunta
 
     CP      DIR_UP : JR NZ, .tnup
-    LD      A, (IX+1) : SUB ENEMY_SPEED : CP 8 : JP C, .tchg
+    LD      A, (IX+1) : SUB (IX+5) : CP 8 : JP C, .tchg
     LD      E, A
     LD      B, (IX+0) : LD C, E : CALL IS_WALL : JP NZ, .tchg
     LD      A, (IX+0) : ADD A, 15 : LD B, A : LD C, E : CALL IS_WALL : JP NZ, .tchg
     LD      (IX+1), E : JP .tmt
 .tnup:
     CP      DIR_DOWN : JR NZ, .tndn
-    LD      A, (IX+1) : ADD A, ENEMY_SPEED : CP 153 : JP NC, .tchg
+    LD      A, (IX+1) : ADD A, (IX+5) : CP 153 : JP NC, .tchg
     LD      E, A
     LD      B, (IX+0) : LD A, E : ADD A, 15 : LD C, A : CALL IS_WALL : JP NZ, .tchg
     LD      A, (IX+0) : ADD A, 15 : LD B, A : LD A, E : ADD A, 15 : LD C, A : CALL IS_WALL : JP NZ, .tchg
     LD      (IX+1), E : JP .tmt
 .tndn:
     CP      DIR_LEFT : JR NZ, .tnlt
-    LD      A, (IX+0) : SUB ENEMY_SPEED : JP C, .tchg
+    LD      A, (IX+0) : SUB (IX+5) : JP C, .tchg
     LD      E, A
     LD      B, E : LD C, (IX+1) : CALL IS_WALL : JP NZ, .tchg
     LD      B, E : LD A, (IX+1) : ADD A, 15 : LD C, A : CALL IS_WALL : JP NZ, .tchg
     LD      (IX+0), E : JP .tmt
 .tnlt:
-    LD      A, (IX+0) : ADD A, ENEMY_SPEED : CP 241 : JP NC, .tchg
+    LD      A, (IX+0) : ADD A, (IX+5) : CP 241 : JP NC, .tchg
     LD      E, A
     LD      A, E : ADD A, 15 : LD B, A : LD C, (IX+1) : CALL IS_WALL : JP NZ, .tchg
     LD      A, E : ADD A, 15 : LD B, A : LD A, (IX+1) : ADD A, 15 : LD C, A : CALL IS_WALL : JP NZ, .tchg
@@ -559,15 +577,7 @@ UPDATE_TANK:
     LD      B, A
     LD      A, D : AND 0x02
     CP      B : RET Z            ; sama akseli → jatka suoraan
-    ; NAVMAP-haku
-    LD      A, (IX+1) : SRL A : SRL A : SRL A
-    LD      H, 0 : LD L, A
-    ADD     HL, HL : ADD HL, HL : ADD HL, HL : ADD HL, HL : ADD HL, HL
-    LD      A, (IX+0) : SRL A : SRL A : SRL A
-    ADD     A, L : LD L, A
-    LD      A, L : ADD A, LOW NAVMAP : LD L, A
-    LD      A, H : ADC A, HIGH NAVMAP : LD H, A
-    LD      A, (HL)
+    CALL    GET_NAVMAP_DIRS      ; ei koske B/C/D/E:tä
     LD      B, A             ; B = saatavilla olevat suunnat (NAVMAP-bitit)
     ; Onko preferenssisuunta D auki? (bit D = bitti suuntanumerolla)
     LD      A, D : CP DIR_LEFT : JR C, .tmt_r
@@ -582,202 +592,38 @@ UPDATE_TANK:
     BIT     0, B : RET Z : LD (IX+2), D : RET   ; RIGHT
 
 .tchg:
-    ; Seinä edessä — laske suunta pelaajaa kohti ja kokeile sitä
+    ; Seinä edessä — laske suunta pelaajaa kohti ja kokeile sitä;
+    ; tukossa → yhteinen RANDOM_TURN (tail-call)
     CALL    TANK_TOWARD_PLAYER
     LD      D, A
 
-.ttry:
     ; Kokeile suuntaa D — tarkista MOLEMMAT kulmat (sama kuin pääliikuntakoodi)
-    LD      A, D : CP DIR_UP : JR NZ, .ttu_nd
-    LD      A, (IX+1) : SUB ENEMY_SPEED : CP 8 : JP C, .talt
+    CP      DIR_UP : JR NZ, .ttu_nd
+    LD      A, (IX+1) : SUB (IX+5) : CP 8 : JP C, RANDOM_TURN
     LD      E, A
-    LD      B, (IX+0) : LD C, E : CALL IS_WALL : JP NZ, .talt
-    LD      A, (IX+0) : ADD A, 15 : LD B, A : LD C, E : CALL IS_WALL : JP NZ, .talt
+    LD      B, (IX+0) : LD C, E : CALL IS_WALL : JP NZ, RANDOM_TURN
+    LD      A, (IX+0) : ADD A, 15 : LD B, A : LD C, E : CALL IS_WALL : JP NZ, RANDOM_TURN
     LD      (IX+2), D : RET
 .ttu_nd:
     CP      DIR_DOWN : JR NZ, .ttu_nl
-    LD      A, (IX+1) : ADD A, ENEMY_SPEED : CP 153 : JP NC, .talt
+    LD      A, (IX+1) : ADD A, (IX+5) : CP 153 : JP NC, RANDOM_TURN
     LD      E, A
-    LD      B, (IX+0) : LD A, E : ADD A, 15 : LD C, A : CALL IS_WALL : JP NZ, .talt
-    LD      A, (IX+0) : ADD A, 15 : LD B, A : LD A, E : ADD A, 15 : LD C, A : CALL IS_WALL : JP NZ, .talt
+    LD      B, (IX+0) : LD A, E : ADD A, 15 : LD C, A : CALL IS_WALL : JP NZ, RANDOM_TURN
+    LD      A, (IX+0) : ADD A, 15 : LD B, A : LD A, E : ADD A, 15 : LD C, A : CALL IS_WALL : JP NZ, RANDOM_TURN
     LD      (IX+2), D : RET
 .ttu_nl:
     CP      DIR_LEFT : JR NZ, .ttu_nr
-    LD      A, (IX+0) : SUB ENEMY_SPEED : JP C, .talt
+    LD      A, (IX+0) : SUB (IX+5) : JP C, RANDOM_TURN
     LD      E, A
-    LD      B, E : LD C, (IX+1) : CALL IS_WALL : JP NZ, .talt
-    LD      B, E : LD A, (IX+1) : ADD A, 15 : LD C, A : CALL IS_WALL : JP NZ, .talt
+    LD      B, E : LD C, (IX+1) : CALL IS_WALL : JP NZ, RANDOM_TURN
+    LD      B, E : LD A, (IX+1) : ADD A, 15 : LD C, A : CALL IS_WALL : JP NZ, RANDOM_TURN
     LD      (IX+2), D : RET
 .ttu_nr:
-    LD      A, (IX+0) : ADD A, ENEMY_SPEED : CP 241 : JP NC, .talt
+    LD      A, (IX+0) : ADD A, (IX+5) : CP 241 : JP NC, RANDOM_TURN
     LD      E, A
-    LD      A, E : ADD A, 15 : LD B, A : LD C, (IX+1) : CALL IS_WALL : JP NZ, .talt
-    LD      A, E : ADD A, 15 : LD B, A : LD A, (IX+1) : ADD A, 15 : LD C, A : CALL IS_WALL : JP NZ, .talt
+    LD      A, E : ADD A, 15 : LD B, A : LD C, (IX+1) : CALL IS_WALL : JP NZ, RANDOM_TURN
+    LD      A, E : ADD A, 15 : LD B, A : LD A, (IX+1) : ADD A, 15 : LD C, A : CALL IS_WALL : JP NZ, RANDOM_TURN
     LD      (IX+2), D : RET
-
-.talt:
-    ; Preferenssisuunta tukossa — kokeile satunnaisia
-    LD      B, 12
-.trand:
-    PUSH    BC
-    CALL    RAND : AND 0x03 : LD D, A
-    CP      DIR_UP : JR NZ, .tr_nd
-    LD      A, (IX+1) : SUB ENEMY_SPEED : CP 8 : JR C, .tr_bad
-    LD      E, A : LD B, (IX+0) : LD C, E : CALL IS_WALL : JR NZ, .tr_bad
-    JR      .tr_ok
-.tr_nd:
-    CP      DIR_DOWN : JR NZ, .tr_nl
-    LD      A, (IX+1) : ADD A, ENEMY_SPEED : CP 153 : JR NC, .tr_bad
-    LD      E, A : LD B, (IX+0) : LD A, E : ADD A, 15 : LD C, A : CALL IS_WALL : JR NZ, .tr_bad
-    JR      .tr_ok
-.tr_nl:
-    CP      DIR_LEFT : JR NZ, .tr_nr
-    LD      A, (IX+0) : SUB ENEMY_SPEED : JR C, .tr_bad
-    LD      E, A : LD B, E : LD A, (IX+1) : ADD A, 8 : LD C, A : CALL IS_WALL : JR NZ, .tr_bad
-    JR      .tr_ok
-.tr_nr:
-    LD      A, (IX+0) : ADD A, ENEMY_SPEED : CP 241 : JR NC, .tr_bad
-    LD      E, A : LD A, E : ADD A, 15 : LD B, A
-    LD      A, (IX+1) : ADD A, 8 : LD C, A : CALL IS_WALL : JR NZ, .tr_bad
-.tr_ok:
-    LD      (IX+2), D
-    POP     BC : RET
-.tr_bad:
-    POP     BC : DJNZ .trand
-    RET
-
-; =============================================================================
-; UPDATE_GHOST — liikuta yksi haamu pelaajaa kohti (IX = data)
-; Sama logiikka kuin UPDATE_TANK, mutta GHOST_SPEED (2 vs. ENEMY_SPEED 1).
-; Haamu ei ammu — TANK_TRY_SHOOT:ia ei kutsuta tälle tyypille.
-; =============================================================================
-UPDATE_GHOST:
-    LD      A, (IX+2) : LD D, A     ; D = suunta
-
-    CP      DIR_UP : JR NZ, .tnup
-    LD      A, (IX+1) : SUB GHOST_SPEED : CP 8 : JP C, .tchg
-    LD      E, A
-    LD      B, (IX+0) : LD C, E : CALL IS_WALL : JP NZ, .tchg
-    LD      A, (IX+0) : ADD A, 15 : LD B, A : LD C, E : CALL IS_WALL : JP NZ, .tchg
-    LD      (IX+1), E : JP .tmt
-.tnup:
-    CP      DIR_DOWN : JR NZ, .tndn
-    LD      A, (IX+1) : ADD A, GHOST_SPEED : CP 153 : JP NC, .tchg
-    LD      E, A
-    LD      B, (IX+0) : LD A, E : ADD A, 15 : LD C, A : CALL IS_WALL : JP NZ, .tchg
-    LD      A, (IX+0) : ADD A, 15 : LD B, A : LD A, E : ADD A, 15 : LD C, A : CALL IS_WALL : JP NZ, .tchg
-    LD      (IX+1), E : JP .tmt
-.tndn:
-    CP      DIR_LEFT : JR NZ, .tnlt
-    LD      A, (IX+0) : SUB GHOST_SPEED : JP C, .tchg
-    LD      E, A
-    LD      B, E : LD C, (IX+1) : CALL IS_WALL : JP NZ, .tchg
-    LD      B, E : LD A, (IX+1) : ADD A, 15 : LD C, A : CALL IS_WALL : JP NZ, .tchg
-    LD      (IX+0), E : JP .tmt
-.tnlt:
-    LD      A, (IX+0) : ADD A, GHOST_SPEED : CP 241 : JP NC, .tchg
-    LD      E, A
-    LD      A, E : ADD A, 15 : LD B, A : LD C, (IX+1) : CALL IS_WALL : JP NZ, .tchg
-    LD      A, E : ADD A, 15 : LD B, A : LD A, (IX+1) : ADD A, 15 : LD C, A : CALL IS_WALL : JP NZ, .tchg
-    LD      (IX+0), E
-
-.tmt:
-    ; Grid-raja: käänny pelaajaa kohti NAVMAP:in avulla — ei taaksepäin
-    LD      A, (IX+0) : AND 0x07 : RET NZ
-    LD      A, (IX+1) : AND 0x07 : RET NZ
-    CALL    TANK_TOWARD_PLAYER   ; A = preferred direction
-    LD      D, A
-    ; Suodata: käänny vain jos preferenssi on kohtisuora nykyiseen akseliin
-    LD      A, (IX+2) : AND 0x02
-    LD      B, A
-    LD      A, D : AND 0x02
-    CP      B : RET Z            ; sama akseli → jatka suoraan
-    ; NAVMAP-haku
-    LD      A, (IX+1) : SRL A : SRL A : SRL A
-    LD      H, 0 : LD L, A
-    ADD     HL, HL : ADD HL, HL : ADD HL, HL : ADD HL, HL : ADD HL, HL
-    LD      A, (IX+0) : SRL A : SRL A : SRL A
-    ADD     A, L : LD L, A
-    LD      A, L : ADD A, LOW NAVMAP : LD L, A
-    LD      A, H : ADC A, HIGH NAVMAP : LD H, A
-    LD      A, (HL)
-    LD      B, A             ; B = saatavilla olevat suunnat (NAVMAP-bitit)
-    ; Onko preferenssisuunta D auki? (bit D = bitti suuntanumerolla)
-    LD      A, D : CP DIR_LEFT : JR C, .tmt_r
-    CP      DIR_UP   : JR C, .tmt_l
-    CP      DIR_DOWN : JR C, .tmt_u
-    BIT     3, B : RET Z : LD (IX+2), D : RET   ; DOWN
-.tmt_u:
-    BIT     2, B : RET Z : LD (IX+2), D : RET   ; UP
-.tmt_l:
-    BIT     1, B : RET Z : LD (IX+2), D : RET   ; LEFT
-.tmt_r:
-    BIT     0, B : RET Z : LD (IX+2), D : RET   ; RIGHT
-
-.tchg:
-    ; Seinä edessä — laske suunta pelaajaa kohti ja kokeile sitä
-    CALL    TANK_TOWARD_PLAYER
-    LD      D, A
-
-.ttry:
-    ; Kokeile suuntaa D — tarkista MOLEMMAT kulmat (sama kuin pääliikuntakoodi)
-    LD      A, D : CP DIR_UP : JR NZ, .ttu_nd
-    LD      A, (IX+1) : SUB GHOST_SPEED : CP 8 : JP C, .talt
-    LD      E, A
-    LD      B, (IX+0) : LD C, E : CALL IS_WALL : JP NZ, .talt
-    LD      A, (IX+0) : ADD A, 15 : LD B, A : LD C, E : CALL IS_WALL : JP NZ, .talt
-    LD      (IX+2), D : RET
-.ttu_nd:
-    CP      DIR_DOWN : JR NZ, .ttu_nl
-    LD      A, (IX+1) : ADD A, GHOST_SPEED : CP 153 : JP NC, .talt
-    LD      E, A
-    LD      B, (IX+0) : LD A, E : ADD A, 15 : LD C, A : CALL IS_WALL : JP NZ, .talt
-    LD      A, (IX+0) : ADD A, 15 : LD B, A : LD A, E : ADD A, 15 : LD C, A : CALL IS_WALL : JP NZ, .talt
-    LD      (IX+2), D : RET
-.ttu_nl:
-    CP      DIR_LEFT : JR NZ, .ttu_nr
-    LD      A, (IX+0) : SUB GHOST_SPEED : JP C, .talt
-    LD      E, A
-    LD      B, E : LD C, (IX+1) : CALL IS_WALL : JP NZ, .talt
-    LD      B, E : LD A, (IX+1) : ADD A, 15 : LD C, A : CALL IS_WALL : JP NZ, .talt
-    LD      (IX+2), D : RET
-.ttu_nr:
-    LD      A, (IX+0) : ADD A, GHOST_SPEED : CP 241 : JP NC, .talt
-    LD      E, A
-    LD      A, E : ADD A, 15 : LD B, A : LD C, (IX+1) : CALL IS_WALL : JP NZ, .talt
-    LD      A, E : ADD A, 15 : LD B, A : LD A, (IX+1) : ADD A, 15 : LD C, A : CALL IS_WALL : JP NZ, .talt
-    LD      (IX+2), D : RET
-
-.talt:
-    ; Preferenssisuunta tukossa — kokeile satunnaisia
-    LD      B, 12
-.trand:
-    PUSH    BC
-    CALL    RAND : AND 0x03 : LD D, A
-    CP      DIR_UP : JR NZ, .tr_nd
-    LD      A, (IX+1) : SUB GHOST_SPEED : CP 8 : JR C, .tr_bad
-    LD      E, A : LD B, (IX+0) : LD C, E : CALL IS_WALL : JR NZ, .tr_bad
-    JR      .tr_ok
-.tr_nd:
-    CP      DIR_DOWN : JR NZ, .tr_nl
-    LD      A, (IX+1) : ADD A, GHOST_SPEED : CP 153 : JR NC, .tr_bad
-    LD      E, A : LD B, (IX+0) : LD A, E : ADD A, 15 : LD C, A : CALL IS_WALL : JR NZ, .tr_bad
-    JR      .tr_ok
-.tr_nl:
-    CP      DIR_LEFT : JR NZ, .tr_nr
-    LD      A, (IX+0) : SUB GHOST_SPEED : JR C, .tr_bad
-    LD      E, A : LD B, E : LD A, (IX+1) : ADD A, 8 : LD C, A : CALL IS_WALL : JR NZ, .tr_bad
-    JR      .tr_ok
-.tr_nr:
-    LD      A, (IX+0) : ADD A, GHOST_SPEED : CP 241 : JR NC, .tr_bad
-    LD      E, A : LD A, E : ADD A, 15 : LD B, A
-    LD      A, (IX+1) : ADD A, 8 : LD C, A : CALL IS_WALL : JR NZ, .tr_bad
-.tr_ok:
-    LD      (IX+2), D
-    POP     BC : RET
-.tr_bad:
-    POP     BC : DJNZ .trand
-    RET
 
 ; =============================================================================
 ; TANK_TRY_SHOOT — ampuu molempiin suuntiin kun samalla rivillä/sarakkeella
@@ -861,12 +707,12 @@ UPDATE_ENEMIES:
     JR      .skip
 .chk_tank:
     CP      ENEMY_TANK : JR NZ, .chk_ghost
-    PUSH    DE : CALL UPDATE_TANK : POP DE
+    PUSH    DE : CALL UPDATE_CHASER : POP DE
     CALL    TANK_TRY_SHOOT
     JR      .skip
 .chk_ghost:
     CP      ENEMY_GHOST : JR NZ, .skip
-    CALL    UPDATE_GHOST          ; ei ammu
+    CALL    UPDATE_CHASER         ; sama jahtauslogiikka kuin tankilla, ei ammu
 .skip:
     POP     DE : INC D
     LD      BC, ENEMY_SIZE : ADD IX, BC
