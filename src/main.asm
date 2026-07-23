@@ -48,7 +48,7 @@ INIT:
     LD      HL, 0x3000 + 16 : CALL LOAD_HUD_COLORS
     CALL    INIT_PLAYERS
     CALL    INIT_BOSS              ; nollaa BOSS_ACTIVE, lataa Wizard-dummypattern
-    LD      A, 6 : LD (LEVEL), A   ; TESTI: suoraan boss-tasolle (WAVE_TABLE taso 6) — vaihda 1:ksi normaaliin peliin
+    LD      A, 1 : LD (LEVEL), A   ; TESTI: suoraan boss-tasolle (WAVE_TABLE taso 6) — vaihda 1:ksi normaaliin peliin
     CALL    INIT_ENEMIES
     CALL    INIT_BULLETS
     CALL    INIT_EXPLOSIONS
