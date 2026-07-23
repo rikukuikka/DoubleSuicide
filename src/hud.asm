@@ -62,7 +62,9 @@ DIGIT_PATS:
     DB #F6,#62,#74,#38,#18,#18,#18,#3C  ; 'Y'
     DB #FE,#86,#0C,#18,#30,#60,#C2,#FE  ; 'Z'  ;; UUSI
 ; Ovi-tile
-    DB $55,$AA,$00,$00,$00,$00,$00,$00
+    DB $55,$AA,$00,$00,$00,$00,$00,$00  ; Ylälaita
+
+
 DIGIT_PATS_END:
 
 ; =============================================================================
@@ -147,10 +149,9 @@ LOAD_HUD_COLORS:
 DRAW_HUD:
     LD      A, (HUD_DIRTY) : OR A : RET Z  ; ei muutoksia → ohita
     XOR     A : LD (HUD_DIRTY), A           ; nollaa lippu
-    LD      HL, VRAM_NAMETABLE + 21*32  ; rivi 23
-    CALL    VDP_SETW
 
-    ; Rivi 21
+    ; Rivi 21 — oma VDP_SETW, jotta ajoitusvirhe ei siirrä rivin 23 osoitetta
+    LD      HL, VRAM_NAMETABLE + 21*32 : CALL VDP_SETW
     ; Tile 0: seinä
     LD      A, 1 : OUT (VDP_DATA), A
     ; Tile 1-2: ovi (2 kpl)
@@ -168,7 +169,8 @@ DRAW_HUD:
     ; Tile 32: seinä
     LD      A, 1 : OUT (VDP_DATA), A
 
-    ; Rivi 22
+    ; Rivi 22 — oma VDP_SETW
+    LD      HL, VRAM_NAMETABLE + 22*32 : CALL VDP_SETW
     ; Tile 0: seinä
     LD      A, 1 : OUT (VDP_DATA), A
     ; Tile 1-2: tyhjä (2 kpl)
@@ -190,61 +192,69 @@ DRAW_HUD:
     ; Tile 32: seinä
     LD      A, 1 : OUT (VDP_DATA), A
 
-    ; Rivi 23
+    ; Rivi 23 — oma VDP_SETW takaa oikean osoitteen riippumatta rivien 21-22 ajoituksesta
+    LD      HL, VRAM_NAMETABLE + 23*32 : CALL VDP_SETW
     ; Tile 0: seinä
     LD      A, 1 : OUT (VDP_DATA), A
-    ; Tile 1-2: tyhjä (2 kpl)
-    LD      B, 2
-    XOR     A
-.sp4: OUT    (VDP_DATA), A : DJNZ .sp4
-    ; Tile 3: seinä
+    ; Tile 1-2: tyhjä (2 kpl) — loop, CALL VDP_DELAY pitää ≥27T välin OUTien välillä
+    NOP : NOP : NOP : NOP   ; 11T(LD B,2+XOR A)+16T(NOPs)=27T gap ✓
+    LD      B, 2 : XOR A
+.sp4: OUT    (VDP_DATA), A : CALL .vdp_dly : DJNZ .sp4
+    ; Tile 3: seinä (DJNZ fall-through 8T + LD A,1 7T = 15T → lisää viivettä)
+    NOP : NOP : NOP
     LD      A, 1 : OUT (VDP_DATA), A
-    ; Tile 5: P1 elämät
+    ; Tile 4: P1 elämät (LD A,(nn) 13T + ADD 4T = 17T → tarvitaan viive)
+    CALL    .vdp_dly
     LD      A, (P1_LIVES) : ADD A, 2 : OUT (VDP_DATA), A
-    ; Tile 6: tyhjä
-    XOR     A : OUT (VDP_DATA), A
-    ; Tile 4: P1 ikoni (tilee 12)
-    LD      A, 12 : OUT (VDP_DATA), A
-    ; Tile 6: tyhjä
-    XOR     A : OUT (VDP_DATA), A
-    ; Tile 4-7: P1 pisteet (4 BCD-numeroa)
+    ; Tile 5: tyhjä
+    CALL    .vdp_dly : XOR A : OUT (VDP_DATA), A
+    ; Tile 6: P1 ikoni (tilee 12)
+    CALL    .vdp_dly : LD A, 12 : OUT (VDP_DATA), A
+    ; Tile 7: tyhjä
+    CALL    .vdp_dly : XOR A : OUT (VDP_DATA), A
+    ; Tile 8-11: P1 pisteet (4 BCD-numeroa) — LD A,(nn) antaa riittävän viiveen
     LD      A, (P1_SCORE_H)
     RRCA : RRCA : RRCA : RRCA : AND 0x0F : ADD A, 2 : OUT (VDP_DATA), A
-    LD      A, (P1_SCORE_H)
-    AND     0x0F : ADD A, 2 : OUT (VDP_DATA), A
+    NOP                         ; 24T+4T=28T ≥ 27T ✓
+    LD      A, (P1_SCORE_H) : AND 0x0F : ADD A, 2 : OUT (VDP_DATA), A
     LD      A, (P1_SCORE_L)
     RRCA : RRCA : RRCA : RRCA : AND 0x0F : ADD A, 2 : OUT (VDP_DATA), A
-    LD      A, (P1_SCORE_L)
-    AND     0x0F : ADD A, 2 : OUT (VDP_DATA), A
-    ; Tile 11-20: tyhjä (10 kpl)
-    LD      B, 8
-    XOR     A
-.sp5: OUT    (VDP_DATA), A : DJNZ .sp5
-    ; Tile 24-27: P2 pisteet
+    NOP
+    LD      A, (P1_SCORE_L) : AND 0x0F : ADD A, 2 : OUT (VDP_DATA), A
+    ; Tile 12-19: tyhjä (8 kpl)
+    CALL    .vdp_dly        ; 11T(LD B,8+XOR A)+31T=42T gap ✓
+    LD      B, 8 : XOR A
+.sp5: OUT    (VDP_DATA), A : CALL .vdp_dly : DJNZ .sp5
+    ; Tile 20-23: P2 pisteet
     LD      A, (P2_SCORE_H)
     RRCA : RRCA : RRCA : RRCA : AND 0x0F : ADD A, 2 : OUT (VDP_DATA), A
-    LD      A, (P2_SCORE_H)
-    AND     0x0F : ADD A, 2 : OUT (VDP_DATA), A
+    NOP
+    LD      A, (P2_SCORE_H) : AND 0x0F : ADD A, 2 : OUT (VDP_DATA), A
     LD      A, (P2_SCORE_L)
     RRCA : RRCA : RRCA : RRCA : AND 0x0F : ADD A, 2 : OUT (VDP_DATA), A
-    LD      A, (P2_SCORE_L)
-    AND     0x0F : ADD A, 2 : OUT (VDP_DATA), A
-    ; Tile 6: tyhjä
-    XOR     A : OUT (VDP_DATA), A
-    ; Tile 21: P2 ikoni (tilee 13)
-    LD      A, 13 : OUT (VDP_DATA), A
-    ; Tile 6: tyhjä
-    XOR     A : OUT (VDP_DATA), A
-    ; Tile 22: P2 elämät
+    NOP
+    LD      A, (P2_SCORE_L) : AND 0x0F : ADD A, 2 : OUT (VDP_DATA), A
+    ; Tile 24: tyhjä
+    CALL    .vdp_dly : XOR A : OUT (VDP_DATA), A
+    ; Tile 25: P2 ikoni (tilee 13)
+    CALL    .vdp_dly : LD A, 13 : OUT (VDP_DATA), A
+    ; Tile 26: tyhjä
+    CALL    .vdp_dly : XOR A : OUT (VDP_DATA), A
+    ; Tile 27: P2 elämät (LD A,(nn) 13T + ADD 4T = 17T → tarvitaan viive)
+    CALL    .vdp_dly
     LD      A, (P2_LIVES) : ADD A, 2 : OUT (VDP_DATA), A
-    ; Tile 23: seinä
+    ; Tile 28: seinä
+    CALL    .vdp_dly : LD A, 1 : OUT (VDP_DATA), A
+    ; Tile 29-30: tyhjä (2 kpl)
+    NOP : NOP : NOP : NOP   ; 11T(LD B,2+XOR A)+16T=27T gap ✓
+    LD      B, 2 : XOR A
+.sp6: OUT    (VDP_DATA), A : CALL .vdp_dly : DJNZ .sp6
+    ; Tile 31: seinä
+    NOP : NOP : NOP
     LD      A, 1 : OUT (VDP_DATA), A
-    ; Tile 24-25: tyhjä (2 kpl)
-    LD      B, 2
-    XOR     A
-.sp6: OUT    (VDP_DATA), A : DJNZ .sp6
-    ; Tile 26: seinä
-    LD      A, 1 : OUT (VDP_DATA), A
+    RET
+.vdp_dly:
+    NOP                         ; CALL(17T) + NOP(4T) + RET(10T) = 31T gap
     RET
 
 ; =============================================================================

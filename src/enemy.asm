@@ -69,6 +69,22 @@ TANK_DIR_PAT:
     DB 60, 60, 64, 64   ; vaaka sama sprite molemmille suunnille, sama pystylle
 
 ; =============================================================================
+; WAVE_TABLE — vihollismäärät per taso (muokkaa tätä helposti!)
+; Muoto: DB worritit, tankit
+; Yhteensä ei saa ylittää MAX_ENEMIES (= 6)
+; Viimeinen rivi toistuu kaikilla myöhemmillä tasoilla automaattisesti
+; =============================================================================
+WAVE_TABLE:
+    DB  2, 0    ; taso 1: 2 worritia, 0 tankkia
+    DB  0, 2    ; taso 2: 0 worritia, 2 tankkia
+    DB  3, 1    ; taso 3: 3 worritia, 1 tankki
+    DB  2, 2    ; taso 4: 2 worritia, 2 tankkia
+    DB  4, 2    ; taso 5: 4 worritia, 2 tankkia
+    DB  4, 2    ; taso 6+: sama
+WAVE_TABLE_END:
+MAX_WAVE_ENTRIES EQU (WAVE_TABLE_END - WAVE_TABLE) / 2
+
+; =============================================================================
 ; RAND — 16-bit LFSR satunnaisluku, ulostulo A
 ; =============================================================================
 RAND:
@@ -118,68 +134,142 @@ INIT_ENEMIES:
     LD      B, 2 * ENEMY_BULLET_SIZE
 .clrt:XOR   A : LD (HL), A : INC HL : DJNZ .clrt
 
-    ; Luo 1 tankki + 2 Worrittia
-    LD      IX, ENEMIES
-    CALL    SPAWN_TANK
-    LD      IX, ENEMIES + ENEMY_SIZE
-    CALL    SPAWN_WORRIT
-    LD      IX, ENEMIES + ENEMY_SIZE*2
-    CALL    SPAWN_WORRIT
-    RET
+    ; Ensimmäisen aallon viholliset WAVE_TABLE:n mukaan (LEVEL asetetaan main.asm:ssa ennen tätä kutsua)
+    JP      SPAWN_ENEMIES_FOR_LEVEL
 
-; SPAWN_WORRIT — luo Worrit IX-osoitteeseen satunnaiseen vapaaseen paikkaan
+; SPAWN_WORRIT — luo Worrit IX-osoitteeseen NAVMAP-pisteiden kautta
 SPAWN_WORRIT:
-    LD      B, 64               ; enemmän yrityksiä
-.try:
-    PUSH    BC
-    ; 16px-kohdistettu satunnaispaikka
-    CALL    RAND : AND 0xF0 : LD (IX+0), A               ; X: 0-240, 16px askel
-    CALL    RAND : AND 0x70 : ADD A, 16 : LD (IX+1), A   ; Y: 16-128, 16px askel
-    ; Tarkista kaikki 4 kulmaa (16x16 alue)
-    LD      B, (IX+0) : LD C, (IX+1) : CALL IS_WALL                      ; vasen ylä
-    JR      NZ, .bad
-    LD      A, (IX+0) : ADD A, 15 : LD B, A : LD C, (IX+1) : CALL IS_WALL ; oikea ylä
-    JR      NZ, .bad
-    LD      B, (IX+0) : LD A, (IX+1) : ADD A, 15 : LD C, A : CALL IS_WALL ; vasen ala
-    JR      NZ, .bad
-    LD      A, (IX+0) : ADD A, 15 : LD B, A
-    LD      A, (IX+1) : ADD A, 15 : LD C, A : CALL IS_WALL                ; oikea ala
-    JR      NZ, .bad
-    ; Kaikki vapaat
-    POP     BC
-    JR      .found
-.bad:
-    POP     BC
-    DJNZ    .try
-    ; Fallback: tunnettu vapaa paikka
-    LD      A, 80 : LD (IX+0), A
-    LD      A, 48 : LD (IX+1), A
-.found:
-    CALL    RAND : AND 0x03 : LD (IX+2), A   ; satunnainen suunta
+    CALL    PICK_SPAWN_POS
+    CALL    RAND : AND 0x03 : LD (IX+2), A
     LD      (IX+3), ENEMY_WORRIT
     LD      (IX+4), 1
     RET
 
-; SPAWN_TANK — luo Tankki IX-osoitteeseen satunnaiseen vapaaseen paikkaan
+; SPAWN_TANK — luo Tankki IX-osoitteeseen NAVMAP-pisteiden kautta
 SPAWN_TANK:
-    LD      B, 64
-.try:
-    PUSH    BC
-    CALL    RAND : AND 0xF0 : LD (IX+0), A
-    CALL    RAND : AND 0x70 : ADD A, 16 : LD (IX+1), A
-    LD      B, (IX+0) : LD C, (IX+1) : CALL IS_WALL : JR NZ, .bad
-    LD      A, (IX+0) : ADD A, 15 : LD B, A : LD C, (IX+1) : CALL IS_WALL : JR NZ, .bad
-    LD      B, (IX+0) : LD A, (IX+1) : ADD A, 15 : LD C, A : CALL IS_WALL : JR NZ, .bad
-    LD      A, (IX+0) : ADD A, 15 : LD B, A : LD A, (IX+1) : ADD A, 15 : LD C, A : CALL IS_WALL : JR NZ, .bad
-    POP     BC : JR .found
-.bad:
-    POP     BC : DJNZ .try
-    LD      A, 112 : LD (IX+0), A
-    LD      A, 80  : LD (IX+1), A
-.found:
+    CALL    PICK_SPAWN_POS
     LD      (IX+2), DIR_RIGHT
     LD      (IX+3), ENEMY_TANK
     LD      (IX+4), 1
+    RET
+
+; =============================================================================
+; PICK_SPAWN_POS — valitsee spawn-pisteen NAVMAP:ista
+; Sisääntulo: IX = kohdeslotti
+; Vaatimukset: NAVMAP-piste vapaa, etäisyys pelaajiin >= 30px,
+;              ei päällekkäisyyttä aiemmin spawnattujen vihollisten kanssa
+; Ulostulo: IX+0=X, IX+1=Y asetettu (tai fallback jos 64 yritystä epäonnistuu)
+; Tuhoaa: A, B, C, D, E, H, L, IY (IX säilyy)
+; =============================================================================
+PICK_SPAWN_POS:
+    LD      B, 64
+.psptry:
+    PUSH    BC
+    ; Satunnainen sarake 0-31
+    CALL    RAND : AND 0x1F : LD D, A
+    ; Satunnainen rivi 0-31, hylkää >= 21
+    CALL    RAND : AND 0x1F
+    CP      21 : JP NC, .pspbad
+    LD      E, A
+    ; NAVMAP[rivi*32 + sarake] != 0 → kelvollinen paikka
+    LD      H, 0 : LD L, E
+    ADD     HL, HL : ADD HL, HL : ADD HL, HL : ADD HL, HL : ADD HL, HL
+    LD      A, L : ADD A, D : LD L, A
+    LD      A, L : ADD A, LOW NAVMAP : LD L, A
+    LD      A, H : ADC A, HIGH NAVMAP : LD H, A
+    LD      A, (HL) : OR A : JP Z, .pspbad
+    ; Laske pikselikoordinaatit (8px/tile)
+    LD      A, D : ADD A, A : ADD A, A : ADD A, A : LD (IX+0), A
+    LD      A, E : ADD A, A : ADD A, A : ADD A, A : LD (IX+1), A
+    ; Tarkista P1-etäisyys (jos elossa)
+    LD      A, (P1_DEAD_TMR) : OR A : JR NZ, .psp_p2
+    LD      A, (P1_LIVES) : OR A : JR Z, .psp_p2
+    LD      A, (P1_X) : LD B, A : LD A, (IX+0) : SUB B
+    JP      P, .psp_p1xp : NEG
+.psp_p1xp:
+    CP      30 : JR NC, .psp_p2
+    LD      A, (P1_Y) : LD B, A : LD A, (IX+1) : SUB B
+    JP      P, .psp_p1yp : NEG
+.psp_p1yp:
+    CP      30 : JR C, .pspbad
+.psp_p2:
+    ; Tarkista P2-etäisyys (jos elossa)
+    LD      A, (P2_DEAD_TMR) : OR A : JR NZ, .psp_prev
+    LD      A, (P2_LIVES) : OR A : JR Z, .psp_prev
+    LD      A, (P2_X) : LD B, A : LD A, (IX+0) : SUB B
+    JP      P, .psp_p2xp : NEG
+.psp_p2xp:
+    CP      30 : JR NC, .psp_prev
+    LD      A, (P2_Y) : LD B, A : LD A, (IX+1) : SUB B
+    JP      P, .psp_p2yp : NEG
+.psp_p2yp:
+    CP      30 : JR C, .pspbad
+.psp_prev:
+    ; Tarkista päällekkäisyys jo aktiivisten vihollisten kanssa (vain active=1)
+    LD      A, (IX+0) : LD D, A
+    LD      A, (IX+1) : LD E, A
+    LD      IY, ENEMIES
+    LD      B, MAX_ENEMIES
+.psp_elp:
+    LD      A, (IY+4) : OR A : JR Z, .psp_enxt   ; ei aktiivinen → ohita
+    LD      A, (IY+0) : SUB D
+    JP      P, .psp_expos : NEG
+.psp_expos:
+    CP      16 : JR NC, .psp_enxt
+    LD      A, (IY+1) : SUB E
+    JP      P, .psp_eypos : NEG
+.psp_eypos:
+    CP      16 : JR C, .pspbad                    ; liian lähellä → hylkää
+.psp_enxt:
+    INC     IY : INC IY : INC IY : INC IY
+    INC     IY : INC IY : INC IY : INC IY
+    DJNZ    .psp_elp
+    ; Kaikki tarkistukset läpäisty
+    POP     BC : RET
+.pspbad:
+    POP     BC : DEC B : JP NZ, .psptry
+    ; Kaikki 64 satunnaisyritystä epäonnistuivat (esim. kartta täynnä muita
+    ; vihollisia/pelaajia lähellä) — skannaa NAVMAP varmalla logiikalla, joka
+    ; TAKAA ettei koskaan osuta seinään (toisin kuin vanha kiinteä koordinaatti)
+    LD      HL, NAVMAP
+    LD      B, 0            ; B = sarake 0-31
+    LD      C, 0            ; C = rivi 0-20
+.pspf_try:
+    LD      A, (HL) : OR A : JR Z, .pspf_advance
+    PUSH    HL
+    LD      A, B : ADD A, A : ADD A, A : ADD A, A : LD D, A   ; D = X
+    LD      A, C : ADD A, A : ADD A, A : ADD A, A : LD E, A   ; E = Y
+    ; Ohita jos täsmälleen sama piste kuin jokin jo aktiivinen vihollinen
+    PUSH    BC
+    LD      IY, ENEMIES
+    LD      B, MAX_ENEMIES
+.pspf_chk:
+    LD      A, (IY+4) : OR A : JR Z, .pspf_chknext
+    LD      A, (IY+0) : CP D : JR NZ, .pspf_chknext
+    LD      A, (IY+1) : CP E : JR Z, .pspf_dupe
+.pspf_chknext:
+    INC     IY : INC IY : INC IY : INC IY
+    INC     IY : INC IY : INC IY : INC IY
+    DJNZ    .pspf_chk
+    ; Ei törmäystä — käytä tätä pistettä
+    POP     BC
+    POP     HL
+    LD      (IX+0), D
+    LD      (IX+1), E
+    RET
+.pspf_dupe:
+    POP     BC
+    POP     HL
+.pspf_advance:
+    INC     HL
+    INC     B
+    LD      A, B : CP 32 : JR NZ, .pspf_try
+    LD      B, 0
+    INC     C
+    LD      A, C : CP 21 : JR NZ, .pspf_try
+    ; Ei pitäisi koskaan tapahtua (koko NAVMAP tyhjä) — viimeinen varasija
+    LD      A, 16 : LD (IX+0), A
+    LD      A, 16 : LD (IX+1), A
     RET
 
 ; =============================================================================
@@ -841,8 +931,7 @@ CHECK_WAVE_COMPLETE:
     RET
 
 ; =============================================================================
-; SPAWN_WAVE — luo uusi aalto vihollisia LEVEL:in mukaan
-; Level 1 = 3, Level 2 = 4, Level 3 = 5, Level 4+ = 6
+; SPAWN_WAVE — luo uusi aalto vihollisia WAVE_TABLE:n mukaan
 ; =============================================================================
 SPAWN_WAVE:
     ; Nollaa viholliset ja niiden ammukset (myös tankin)
@@ -855,26 +944,51 @@ SPAWN_WAVE:
     LD      HL, TANK_BULLETS
     LD      B, 2 * ENEMY_BULLET_SIZE
 .clrt:XOR   A : LD (HL), A : INC HL : DJNZ .clrt
+    ; Nollaa myös pelaajien ammukset
+    LD      HL, BULLETS
+    LD      B, BULLET_SIZE * 2
+.clrp:XOR   A : LD (HL), A : INC HL : DJNZ .clrp
+    ; Varmista että musiikki soi (ei resetoida kohtaa biisissä)
+    LD      A, 1 : LD (BGM_ACTIVE), A
 
-    ; Laske montako: LEVEL + 2, max MAX_ENEMIES
-    LD      A, (LEVEL)
-    ADD     A, 2
-    CP      MAX_ENEMIES + 1
-    JR      C, .cnt_ok
-    LD      A, MAX_ENEMIES
-.cnt_ok:
-    ; Aina 1 tankki ensimmäisenä
+    JP      SPAWN_ENEMIES_FOR_LEVEL
+
+; =============================================================================
+; SPAWN_ENEMIES_FOR_LEVEL — spawnaa (LEVEL):n mukaiset viholliset WAVE_TABLE:sta
+; Olettaa että ENEMIES on jo tyhjennetty kutsujan toimesta.
+; =============================================================================
+SPAWN_ENEMIES_FOR_LEVEL:
+    ; Hae tason vihollismäärät WAVE_TABLE:sta
+    LD      A, (LEVEL) : DEC A              ; 0-indeksoitu
+    CP      MAX_WAVE_ENTRIES : JR C, .wt_ok
+    LD      A, MAX_WAVE_ENTRIES - 1         ; leikkaa viimeiseen riviin
+.wt_ok:
+    ADD     A, A                             ; 2 tavua per merkintä
+    LD      HL, WAVE_TABLE
+    ADD     A, L : LD L, A
+    LD      A, H : ADC A, 0 : LD H, A
+    LD      B, (HL) : INC HL : LD C, (HL)  ; B = worritit, C = tankit
+
     LD      IX, ENEMIES
+
+    ; Spawnaa tankit
+    LD      A, C : OR A : JR Z, .sw_worrits
+    LD      D, C
+.sw_tank:
+    PUSH    BC : PUSH    DE
     CALL    SPAWN_TANK
-    LD      DE, ENEMY_SIZE : ADD IX, DE
-    DEC     A               ; vähennetään 1 tankin paikasta
-    OR      A : RET Z       ; vain tankki tällä aallolla
-    LD      B, A
-.spawn_lp:
-    PUSH    BC
+    LD      BC, ENEMY_SIZE : ADD IX, BC
+    POP     DE : POP     BC
+    DEC     D : JR NZ, .sw_tank
+
+.sw_worrits:
+    ; Spawnaa worritit
+    LD      A, B : OR A : RET Z
+    LD      D, B
+.sw_worrit:
+    PUSH    BC : PUSH    DE
     CALL    SPAWN_WORRIT
-    LD      DE, ENEMY_SIZE
-    ADD     IX, DE
-    POP     BC
-    DJNZ    .spawn_lp
+    LD      BC, ENEMY_SIZE : ADD IX, BC
+    POP     DE : POP     BC
+    DEC     D : JR NZ, .sw_worrit
     RET

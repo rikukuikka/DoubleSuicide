@@ -46,10 +46,10 @@ INIT:
     LD      HL, 0x2800 + 16 : CALL LOAD_HUD_COLORS
     LD      HL, 0x3000 + 16 : CALL LOAD_HUD_COLORS
     CALL    INIT_PLAYERS
+    LD      A, 1 : LD (LEVEL), A   ; LEVEL täytyy olla asetettu ennen INIT_ENEMIES:iä (WAVE_TABLE-haku)
     CALL    INIT_ENEMIES
     CALL    INIT_BULLETS
     CALL    INIT_EXPLOSIONS
-    LD      A, 1 : LD (LEVEL), A
     XOR     A : LD (WAVE_TIMER), A
     LD      A, 1 : LD (HUD_DIRTY), A   ; DRAW_MAZE ylikirjoitti rivin 23
     ; Tyhjennä sprite attribute table — title screen saattaa jättää stray-spritejä
