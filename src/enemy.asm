@@ -26,6 +26,12 @@ TANK_COLOR      EQU 13          ; magenta
 GHOST_COLOR     EQU 15          ; valkoinen
 GHOST_SPEED     EQU 2           ; nopeampi kuin worrit/tank (ENEMY_SPEED=1)
 GHOST_PAT_BASE  EQU 72          ; RADAR_DOT_PAT(68) varaa 4 patternia (68-71), 32 patternia: 72-103
+; Haamun näkyvyyspuskuri: kuinka monta pikseliä pelaajan 16x16-spriten
+; reunan ulkopuolelle näkyvyys ulottuu. Kynnys = 16 (sprite) + puskuri,
+; koska abs(erotus) < kynnys kattaa sekä spritejen limityksen että puskurin
+; molemmin puolin (ks. GHOST_VISIBLE).
+GHOST_SIGHT_BUFFER  EQU 10
+GHOST_SIGHT_TOL     EQU 16 + GHOST_SIGHT_BUFFER
 
 WORRIT_PATS:
     ; 16x16 Worrit (pattern 8 = offset 64, yksi frame)
@@ -784,22 +790,22 @@ GHOST_VISIBLE:
     LD      A, (P1_Y) : LD C, A : LD A, (IX+1) : SUB C
     JP      P, .gv_p1y : NEG
 .gv_p1y:
-    CP      4 : JR C, .gv_yes
+    CP      GHOST_SIGHT_TOL : JR C, .gv_yes
     LD      A, (P1_X) : LD C, A : LD A, (IX+0) : SUB C
     JP      P, .gv_p1x : NEG
 .gv_p1x:
-    CP      4 : JR C, .gv_yes
+    CP      GHOST_SIGHT_TOL : JR C, .gv_yes
 .gv_p2:
     LD      A, (P2_DEAD_TMR) : OR A : JR NZ, .gv_no
     LD      A, (P2_LIVES) : OR A : JR Z, .gv_no
     LD      A, (P2_Y) : LD C, A : LD A, (IX+1) : SUB C
     JP      P, .gv_p2y : NEG
 .gv_p2y:
-    CP      4 : JR C, .gv_yes
+    CP      GHOST_SIGHT_TOL : JR C, .gv_yes
     LD      A, (P2_X) : LD C, A : LD A, (IX+0) : SUB C
     JP      P, .gv_p2x : NEG
 .gv_p2x:
-    CP      4 : JR C, .gv_yes
+    CP      GHOST_SIGHT_TOL : JR C, .gv_yes
 .gv_no:
     XOR     A : RET
 .gv_yes:
