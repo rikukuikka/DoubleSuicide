@@ -75,6 +75,12 @@ FRAME_CTR   EQU 0xC00D      ; frame counter for animations
 LEVEL       EQU 0xC00E      ; level number (1+)
 WAVE_TIMER  EQU 0xC00F      ; delay between levels
 
+; PAL/NTSC speed compensation (see DETECT_PAL, GAME_TICK_COUNT in main.asm)
+PAL_ACTIVE   EQU 0xC0AF     ; 1 = PAL (50Hz) detected, 0 = NTSC (60Hz)
+PAL_TICK_ACC EQU 0xC0B0     ; Bresenham accumulator, runs an extra logic
+                            ; tick every 5th frame on PAL so real-time game
+                            ; speed matches NTSC (6 ticks per 5 PAL frames)
+
 ; Portal row Y coordinates — computed from maze data
 ; Rows 10-13 are open: Y = 80-111
 PORTAL_Y_MIN    EQU 80

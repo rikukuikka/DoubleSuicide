@@ -77,7 +77,12 @@ TITLE_SCREEN:
 .input_loop:
     CALL    WAIT_VBLANK
     LD      A, (FRAME_CTR) : INC A : LD (FRAME_CTR), A
+    CALL    GAME_TICK_COUNT      ; B = 1 or 2 (PAL catch-up tick, main.asm)
+.snd_loop:
+    PUSH    BC
     CALL    UPDATE_SOUND         ; music keeps playing in the background
+    POP     BC
+    DJNZ    .snd_loop
     CALL    READ_INPUTS
 
     ; Up/down changes the selection

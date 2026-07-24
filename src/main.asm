@@ -28,6 +28,7 @@ INIT:
     LD      SP, 0xF380
 
     CALL    VDP_INIT_SCREEN2
+    CALL    DETECT_PAL            ; measure real hardware refresh rate once
 
     LD      HL, VRAM_NAMETABLE
     LD      BC, 32*24
@@ -84,6 +85,25 @@ MAINLOOP:
     CALL    DRAW_RADAR
     CALL    DRAW_WIZARD           ; the Wizard only uses sprites 26-28, no collision with others
 
+    ; Run the game logic once per real vblank, twice on every 5th PAL frame
+    ; (see GAME_TICK_COUNT) so real-time game speed matches NTSC regardless
+    ; of the display's actual refresh rate.
+    CALL    GAME_TICK_COUNT       ; B = 1 or 2
+.tick_loop:
+    PUSH    BC
+    CALL    GAME_TICK
+    POP     BC
+    DJNZ    .tick_loop
+
+    JP      MAINLOOP
+
+; =============================================================================
+; GAME_TICK — one full logic tick: input, wave timer, all UPDATE_*, and the
+; end-of-wave/round checks. Extracted from MAINLOOP so GAME_TICK_COUNT can
+; run it twice on a PAL "catch-up" frame. Always returns (even the game-over
+; path only gets here via CHECK_GAME_OVER's own JP, which never comes back).
+; =============================================================================
+GAME_TICK:
     CALL    READ_INPUTS
 
     ; --- Wave timer ---
@@ -107,7 +127,7 @@ MAINLOOP:
     CALL    UPDATE_WIZARD_BULLET
     CALL    UPDATE_EXPLOSIONS
     CALL    UPDATE_SOUND
-    JP      MAINLOOP
+    RET
 
 .normal:
     ; Normal gameplay state
@@ -124,7 +144,7 @@ MAINLOOP:
 
     ; Check whether the wave is complete
     CALL    CHECK_WAVE_COMPLETE
-    JP      NZ, MAINLOOP
+    RET     NZ
     ; All enemies destroyed
     LD      A, (BOSS_ACTIVE) : OR A : JR Z, .next_level
     ; Wizard defeated — new, faster round; LEVEL resets to 1
@@ -136,7 +156,7 @@ MAINLOOP:
     LD      A, (LEVEL) : INC A : LD (LEVEL), A
 .level_set:
     LD      A, 90 : LD (WAVE_TIMER), A    ; 1.5s delay
-    JP      MAINLOOP
+    RET
 
 ; =============================================================================
 ; WAIT_VBLANK — wait for V-blank by polling VDP status S#0 bit 7
@@ -146,6 +166,60 @@ WAIT_VBLANK:
     IN      A, (VDP_REG)     ; read 0x99 = status S#0
     AND     0x80             ; bit 7 = V-blank (F) flag
     JR      Z, WAIT_VBLANK
+    RET
+
+; =============================================================================
+; DETECT_PAL — measure the real vblank period to tell PAL (50Hz) apart from
+; NTSC (60Hz) hardware. The Z80 clock (3.579545MHz) is identical on both, so
+; counting how many iterations of a fixed-cost loop fit in one frame gives a
+; reliable, hardware-truth answer without depending on any BIOS system
+; variable (which some clone/modified machines report incorrectly, and which
+; this cartridge never initializes anyway since it never calls the BIOS).
+; NTSC frame ~59700 T-states / 36T per loop iteration ~= 1658 iterations
+; PAL frame ~71590 T-states / 36T per loop iteration ~= 1988 iterations
+; Threshold 0x0700 (1792) sits well between the two either way.
+; Output: (PAL_ACTIVE) = 1 if PAL, 0 if NTSC. Resets (PAL_TICK_ACC) to 0.
+; =============================================================================
+DETECT_PAL:
+    CALL    WAIT_VBLANK       ; sync to the start of a frame (clears the F flag)
+    LD      BC, 0
+.count:
+    INC     BC
+    IN      A, (VDP_REG)
+    AND     0x80
+    JR      Z, .count         ; loop until the F flag sets again (next vblank)
+    LD      A, B
+    CP      7                 ; BC >= 0x0700 (1792) → PAL
+    JR      NC, .pal
+    XOR     A                 ; NTSC
+    JR      .store
+.pal:
+    LD      A, 1
+.store:
+    LD      (PAL_ACTIVE), A
+    XOR     A : LD (PAL_TICK_ACC), A
+    RET
+
+; =============================================================================
+; GAME_TICK_COUNT — decide how many logic ticks to run this real frame.
+; NTSC: always 1. PAL: a 5-frame Bresenham accumulator injects one extra
+; tick every 5th frame, giving 6 ticks per 5 PAL frames — the same 60Hz-
+; equivalent logic rate as NTSC, so speeds/timers/music need no changes.
+; Output: B = 1 or 2
+; =============================================================================
+GAME_TICK_COUNT:
+    LD      A, (PAL_ACTIVE) : OR A : JR Z, .one_tick
+    LD      A, (PAL_TICK_ACC) : ADD A, 1
+    CP      5
+    JR      C, .store
+    SUB     5
+    LD      (PAL_TICK_ACC), A
+    LD      B, 2
+    RET
+.store:
+    LD      (PAL_TICK_ACC), A
+.one_tick:
+    LD      B, 1
     RET
 
     DS      0x8000 - $, 0xFF
