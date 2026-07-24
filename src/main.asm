@@ -34,45 +34,45 @@ INIT:
     LD      A, 0
     CALL    VDP_FILL
 
-    CALL    INIT_HUD             ; lataa tilepatternit (kirjaimet, numerot)
-    CALL    INIT_SOUND           ; musiikki alkaa
+    CALL    INIT_HUD             ; load tile patterns (letters, numbers)
+    CALL    INIT_SOUND           ; music starts
     XOR     A : LD (FRAME_CTR), A
-    CALL    TITLE_SCREEN         ; otsikkoruutu — odottaa valintaa
+    CALL    TITLE_SCREEN         ; title screen — waits for selection
 
-    ; Pelin alustus valinnan jälkeen
+    ; Game setup after the selection
     CALL    INIT_MAZE
     CALL    INIT_NAVMAP
-    ; Palauta HUD-värit kaikkiin pankkeihin TITLE_SCREENin jälkeen
+    ; Restore HUD colors to all banks after TITLE_SCREEN
     LD      HL, 0x2000 + 16 : CALL LOAD_HUD_COLORS
     LD      HL, 0x2800 + 16 : CALL LOAD_HUD_COLORS
     LD      HL, 0x3000 + 16 : CALL LOAD_HUD_COLORS
     CALL    INIT_PLAYERS
-    CALL    INIT_BOSS              ; nollaa BOSS_ACTIVE, lataa Wizardin patternit
+    CALL    INIT_BOSS              ; reset BOSS_ACTIVE, load the Wizard's patterns
     LD      A, 1 : LD (LEVEL), A
-    LD      A, 1 : LD (ROUND), A   ; kierros 1 (hitain nopeustaso)
-    CALL    APPLY_ROUND_SPEEDS     ; laske CUR_*-nopeudet ennen vihollisten spawnia
+    LD      A, 1 : LD (ROUND), A   ; round 1 (slowest speed tier)
+    CALL    APPLY_ROUND_SPEEDS     ; compute CUR_* speeds before spawning enemies
     CALL    INIT_ENEMIES
     CALL    INIT_BULLETS
     CALL    INIT_EXPLOSIONS
     XOR     A : LD (WAVE_TIMER), A
-    LD      A, 1 : LD (HUD_DIRTY), A   ; DRAW_MAZE ylikirjoitti rivin 23
-    ; Tyhjennä sprite attribute table — title screen saattaa jättää stray-spritejä
+    LD      A, 1 : LD (HUD_DIRTY), A   ; DRAW_MAZE overwrote row 23
+    ; Clear the sprite attribute table — the title screen may leave stray sprites
     LD      HL, VRAM_SPRITE_ATT
     LD      BC, 128
     LD      A, 0xD8
     CALL    VDP_FILL
-    CALL    WAIT_VBLANK                 ; synkronoi VDP-kirjoitus vblankiin
+    CALL    WAIT_VBLANK                 ; sync VDP writes to vblank
     CALL    DRAW_HUD
     CALL    DRAW_RADAR
 
-    ; Pysytään DI-tilassa: C-BIOS:in V-blank-keskeytys ei aja eikä
-    ; sotke PSG:tä. Frame-synkka tehdään pollaamalla VDP:n status-rekisteriä.
+    ; Stay in DI mode: C-BIOS's V-blank interrupt doesn't run and
+    ; won't clobber the PSG. Frame sync is done by polling the VDP status register.
 
 MAINLOOP:
     CALL    WAIT_VBLANK
     LD      A, (FRAME_CTR) : INC A : LD (FRAME_CTR), A
 
-    ; Kaikki VDP-kirjoitukset heti vblankin jälkeen
+    ; All VDP writes happen right after vblank
     CALL    DRAW_PLAYERS
     CALL    DRAW_ENEMIES
     CALL    DRAW_BULLETS
@@ -81,7 +81,7 @@ MAINLOOP:
     CALL    DRAW_EXPLOSIONS
     CALL    DRAW_HUD
     CALL    DRAW_RADAR
-    CALL    DRAW_WIZARD           ; Wizard käyttää vain spritet 26-28, ei törmää muihin
+    CALL    DRAW_WIZARD           ; the Wizard only uses sprites 26-28, no collision with others
 
     CALL    READ_INPUTS
 
@@ -90,15 +90,15 @@ MAINLOOP:
     OR      A
     JR      Z, .normal
 
-    ; Viive käynnissä — laske alaspäin
+    ; Delay running — count down
     DEC     A : LD (WAVE_TIMER), A
     OR      A
     JR      NZ, .wave_wait
-    ; Timer loppui → spawn uusi aalto (voi kestää useita frameja)
+    ; Timer ran out → spawn a new wave (may take several frames)
     CALL    SPAWN_WAVE
 
 .wave_wait:
-    ; Pelaajat liikkuvat viiveen aikana, viholliset eivät
+    ; Players move during the delay, enemies do not
     CALL    UPDATE_PLAYERS
     CALL    UPDATE_BULLETS
     CALL    UPDATE_ENEMY_BULLETS
@@ -109,7 +109,7 @@ MAINLOOP:
     JP      MAINLOOP
 
 .normal:
-    ; Normaali pelitila
+    ; Normal gameplay state
     CALL    UPDATE_PLAYERS
     CALL    UPDATE_ENEMIES
     CALL    CHECK_PLAYER_DEATH
@@ -121,12 +121,12 @@ MAINLOOP:
     CALL    UPDATE_EXPLOSIONS
     CALL    UPDATE_SOUND
 
-    ; Tarkista onko aalto valmis
+    ; Check whether the wave is complete
     CALL    CHECK_WAVE_COMPLETE
     JP      NZ, MAINLOOP
-    ; Kaikki viholliset tuhottu
+    ; All enemies destroyed
     LD      A, (BOSS_ACTIVE) : OR A : JR Z, .next_level
-    ; Wizard kaatui — uusi, nopeampi kierros; LEVEL takaisin 1:een
+    ; Wizard defeated — new, faster round; LEVEL resets to 1
     LD      A, (ROUND) : INC A : LD (ROUND), A
     CALL    APPLY_ROUND_SPEEDS
     LD      A, 1 : LD (LEVEL), A
@@ -134,16 +134,16 @@ MAINLOOP:
 .next_level:
     LD      A, (LEVEL) : INC A : LD (LEVEL), A
 .level_set:
-    LD      A, 90 : LD (WAVE_TIMER), A    ; 1.5s viive
+    LD      A, 90 : LD (WAVE_TIMER), A    ; 1.5s delay
     JP      MAINLOOP
 
 ; =============================================================================
-; WAIT_VBLANK — odota V-blank pollaamalla VDP status S#0 bittiä 7
-; Luku portista 0x99 palauttaa status-rekisterin; bitin lukeminen nollaa sen.
+; WAIT_VBLANK — wait for V-blank by polling VDP status S#0 bit 7
+; Reading port 0x99 returns the status register; reading the bit clears it.
 ; =============================================================================
 WAIT_VBLANK:
-    IN      A, (VDP_REG)     ; 0x99 luku = status S#0
-    AND     0x80             ; bitti 7 = V-blank (F) lippu
+    IN      A, (VDP_REG)     ; read 0x99 = status S#0
+    AND     0x80             ; bit 7 = V-blank (F) flag
     JR      Z, WAIT_VBLANK
     RET
 

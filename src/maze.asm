@@ -1,14 +1,14 @@
 ; =============================================================================
-; maze.asm — Labyrinttidata ja piirtorutiinit
+; maze.asm — Maze data and drawing routines
 ; =============================================================================
 
-; Seinä- ja käytäväpatternit (ROM:issa ok, ei muutu)
+; Wall and floor patterns (fine in ROM, never changes)
 WALL_PAT:   DB 0xFE,0xFE,0xFE,0x00,0xEF,0xEF,0xEF,0x00
 FLOOR_PAT:  DB 0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00
 WALL_COL:   DB 0x40,0x40,0x50,0x10,0x40,0x40,0x50,0x10
 FLOOR_COL:  DB 0x10,0x10,0x10,0x10,0x10,0x10,0x10,0x10
 
-; Kenttä 1 (ROM:issa ok, ei muutu)
+; Level 1 (fine in ROM, never changes)
 MAZE:
     DB 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
     DB 1,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,1
@@ -32,23 +32,23 @@ MAZE:
     DB 1,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,1
     DB 1,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,1
 
-; IS_WALL — törmäystarkistus
-; Sisääntulo: B=X C=Y → Z=vapaa NZ=seinä
-; Säästää HL, DE (BC ei muutu eikä tarvitse tallentaa)
+; IS_WALL — collision check
+; Input: B=X C=Y → Z=free NZ=wall
+; Preserves HL, DE (BC is not modified and does not need saving)
 IS_WALL:
     PUSH    HL
     PUSH    DE
-    LD      A, B : SRL A : SRL A : SRL A : LD D, A    ; D = sarake = X/8
-    LD      A, C : SRL A : SRL A : SRL A : LD E, A    ; E = rivi   = Y/8
-    ; HUD-rivit (21+): käsittele erikseen jotta ei lueta MAZE:n ulkopuolelta
+    LD      A, B : SRL A : SRL A : SRL A : LD D, A    ; D = column = X/8
+    LD      A, C : SRL A : SRL A : SRL A : LD E, A    ; E = row    = Y/8
+    ; HUD rows (21+): handle separately so we don't read past the end of MAZE
     LD      A, E : CP 21 : JR C, .normal
-    JR      NZ, .wall                   ; rivi > 21 → seinä
-    ; Rivi 21: ovi-aukot sarakkeilla 1-2 ja 29-30
+    JR      NZ, .wall                   ; row > 21 → wall
+    ; Row 21: door openings at columns 1-2 and 29-30
     LD      A, D
-    CP      1  : JR C,  .wall           ; sarake 0 → seinä
-    CP      3  : JR C,  .free           ; sarakkeet 1-2 → ovi auki
-    CP      29 : JR C,  .wall           ; sarakkeet 3-28 → seinä
-    CP      31 : JR C,  .free           ; sarakkeet 29-30 → ovi auki
+    CP      1  : JR C,  .wall           ; column 0 → wall
+    CP      3  : JR C,  .free           ; columns 1-2 → door open
+    CP      29 : JR C,  .wall           ; columns 3-28 → wall
+    CP      31 : JR C,  .free           ; columns 29-30 → door open
 .wall:
     POP     DE : POP     HL : OR      1 : RET
 .free:
@@ -65,7 +65,7 @@ IS_WALL:
     OR      A
     RET
 
-; LOAD_PATTERNS — lataa patternit VRAM:iin, HL = kohde
+; LOAD_PATTERNS — load patterns into VRAM, HL = destination
 LOAD_PATTERNS:
     CALL    VDP_SETW
     LD      HL, FLOOR_PAT : LD B, 8
@@ -74,7 +74,7 @@ LOAD_PATTERNS:
 .w: LD      A, (HL) : OUT (VDP_DATA), A : INC HL : DJNZ .w
     RET
 
-; LOAD_COLORS — lataa värit VRAM:iin, HL = kohde
+; LOAD_COLORS — load colors into VRAM, HL = destination
 LOAD_COLORS:
     CALL    VDP_SETW
     LD      HL, FLOOR_COL : LD B, 8
@@ -83,7 +83,7 @@ LOAD_COLORS:
 .w: LD      A, (HL) : OUT (VDP_DATA), A : INC HL : DJNZ .w
     RET
 
-; DRAW_MAZE — piirrä labyrintti name tableen
+; DRAW_MAZE — draw the maze into the name table
 DRAW_MAZE:
     LD      HL, VRAM_NAMETABLE : CALL VDP_SETW
     LD      HL, MAZE
@@ -95,30 +95,30 @@ DRAW_MAZE:
 
 
 ; =============================================================================
-; FIND_PORTALS — skannaa labyrinttidata ja löytää porttirivit
-; Etsii rivit joilla sarake 0 TAI sarake 31 on auki (=0)
-; Tallentaa PORTAL_Y_MIN ja PORTAL_Y_MAX RAM:iin
+; FIND_PORTALS — scan the maze data and find the portal rows
+; Looks for rows where column 0 OR column 31 is open (=0)
+; Stores PORTAL_Y_MIN and PORTAL_Y_MAX in RAM
 ; =============================================================================
 FIND_PORTALS:
     LD      HL, MAZE
-    LD      B, 21               ; 24 riviä
-    LD      C, 0                ; rivi-laskuri
+    LD      B, 21               ; 24 rows
+    LD      C, 0                ; row counter
     LD      A, 0xFF
-    LD      (PORTAL_Y_MIN), A   ; ei löydetty vielä
+    LD      (PORTAL_Y_MIN), A   ; not found yet
     XOR     A
     LD      (PORTAL_Y_MAX), A
 
 .row_loop:
-    ; Tarkista sarake 0 (ensimmäinen tavu rivillä)
+    ; Check column 0 (first byte on the row)
     LD      A, (HL)
-    OR      A                   ; 0 = auki
+    OR      A                   ; 0 = open
     JR      NZ, .check_col31
 
-    ; Vasen reuna auki — tämä on porttirivi
+    ; Left edge open — this is a portal row
     JR      .portal_row
 
 .check_col31:
-    ; Tarkista sarake 31 (viimeinen tavu rivillä = HL+31)
+    ; Check column 31 (last byte on the row = HL+31)
     PUSH    HL
     LD      DE, 31
     ADD     HL, DE
@@ -128,31 +128,31 @@ FIND_PORTALS:
     JR      NZ, .not_portal
 
 .portal_row:
-    ; Laske Y-pikselit: rivi * 8
+    ; Compute Y pixels: row * 8
     LD      A, C
     RLCA : RLCA : RLCA          ; * 8
 
-    ; Päivitä PORTAL_Y_MIN jos ei vielä asetettu
+    ; Update PORTAL_Y_MIN if not yet set
     PUSH    AF
     LD      A, (PORTAL_Y_MIN)
     CP      0xFF
     POP     AF
-    JR      NZ, .update_max     ; min jo asetettu → päivitä vain max
-    LD      (PORTAL_Y_MIN), A   ; tallenna min
+    JR      NZ, .update_max     ; min already set → update max only
+    LD      (PORTAL_Y_MIN), A   ; store min
 
 .update_max:
-    ; Max = tämä rivi + 7 (rivin alin pikseli)
+    ; Max = this row + 7 (row's lowest pixel)
     ADD     A, 7
     LD      (PORTAL_Y_MAX), A
 
 .not_portal:
-    ; Seuraava rivi
+    ; Next row
     LD      DE, 32
     ADD     HL, DE
     INC     C
     DJNZ    .row_loop
 
-    ; Jos ei löydetty portteja, aseta turvallinen default
+    ; If no portals were found, set a safe default
     LD      A, (PORTAL_Y_MIN)
     CP      0xFF
     JR      NZ, .done
@@ -161,7 +161,7 @@ FIND_PORTALS:
 .done:
     RET
 
-; INIT_MAZE — lataa kaikki patternit ja piirtää kentän
+; INIT_MAZE — load all patterns and draw the level
 INIT_MAZE:
     LD      HL, 0x0000 : CALL LOAD_PATTERNS
     LD      HL, 0x0800 : CALL LOAD_PATTERNS
@@ -172,13 +172,13 @@ INIT_MAZE:
     CALL    DRAW_MAZE
     RET
 
-; INIT_NAVMAP — laskee risteyspisteet etukäteen NAVMAP-taulukkoon
-; Kutsutaan kerran käynnistyksessä INIT_MAZE:n jälkeen.
-; Joka (sarake, rivi) kohdalle tallennetaan 4-bittinen suuntakartta:
-;   Bitti 0=RIGHT, 1=LEFT, 2=UP, 3=DOWN (0=ei kelvollinen paikka)
-; 2×2-tileblokki täytyy olla vapaa ja kyseinen naapuritile vapaa.
+; INIT_NAVMAP — precompute junction points into the NAVMAP table
+; Called once at startup, after INIT_MAZE.
+; Each (column, row) gets a 4-bit direction map stored:
+;   Bit 0=RIGHT, 1=LEFT, 2=UP, 3=DOWN (0=not a valid spot)
+; The 2x2 tile block must be free, and the relevant neighboring tile must be free.
 INIT_NAVMAP:
-    ; Nollaa NAVMAP
+    ; Clear NAVMAP
     XOR     A
     LD      HL, NAVMAP
     LD      (HL), A
@@ -186,44 +186,44 @@ INIT_NAVMAP:
     LD      BC, 32*21 - 1
     LDIR
 
-    ; IX = osoitin MAZE-taulukkoon (nykyinen solu)
-    ; IY = osoitin NAVMAP-taulukkoon (nykyinen solu)
-    ; D  = jäljellä olevia rivejä (23=rivi0 … 1=rivi22)
-    ; E  = jäljellä olevia sarakkeita (31=sar0 … 1=sar30)
+    ; IX = pointer into the MAZE table (current cell)
+    ; IY = pointer into the NAVMAP table (current cell)
+    ; D  = rows remaining (23=row0 … 1=row22)
+    ; E  = columns remaining (31=col0 … 1=col30)
     LD      IX, MAZE
     LD      IY, NAVMAP
     LD      D, 20
 .nv_row:
     LD      E, 31
 .nv_col:
-    ; Tarkista 2×2 blokki: kaikki neljä tileä täytyy olla vapaita
+    ; Check the 2x2 block: all four tiles must be free
     LD      A, (IX+0)  : OR A : JR NZ, .nv_skip
     LD      A, (IX+1)  : OR A : JR NZ, .nv_skip
     LD      A, (IX+32) : OR A : JR NZ, .nv_skip
     LD      A, (IX+33) : OR A : JR NZ, .nv_skip
 
-    ; Laske suuntabittikartta rekisteriin B
+    ; Compute the direction bitmap in register B
     LD      B, 0
 
-    ; RIGHT: sar+2 ≤ 31 (E ≥ 2) ja molemmat tlet vapaita
+    ; RIGHT: col+2 <= 31 (E >= 2) and both tiles free
     LD      A, E : CP 2 : JR C, .nv_nr
     LD      A, (IX+2)  : OR A : JR NZ, .nv_nr
     LD      A, (IX+34) : OR A : JR NZ, .nv_nr
     SET     0, B
 .nv_nr:
-    ; LEFT: sar > 0 (E < 31) ja molemmat tlet vapaita
+    ; LEFT: col > 0 (E < 31) and both tiles free
     LD      A, E : CP 31 : JR Z, .nv_nl
     LD      A, (IX-1)  : OR A : JR NZ, .nv_nl
     LD      A, (IX+31) : OR A : JR NZ, .nv_nl
     SET     1, B
 .nv_nl:
-    ; UP: rivi > 0 (D < 20) ja molemmat tlet vapaita
+    ; UP: row > 0 (D < 20) and both tiles free
     LD      A, D : CP 20 : JR Z, .nv_nu
     LD      A, (IX-32) : OR A : JR NZ, .nv_nu
     LD      A, (IX-31) : OR A : JR NZ, .nv_nu
     SET     2, B
 .nv_nu:
-    ; DOWN: rivi < 19 (D > 1) ja molemmat tlet vapaita
+    ; DOWN: row < 19 (D > 1) and both tiles free
     LD      A, D : CP 1 : JR Z, .nv_nd
     LD      A, (IX+64) : OR A : JR NZ, .nv_nd
     LD      A, (IX+65) : OR A : JR NZ, .nv_nd
@@ -234,7 +234,7 @@ INIT_NAVMAP:
     INC     IX
     INC     IY
     DEC     E : JR NZ, .nv_col
-    ; Ohita sarake 31 (siirry seuraavan rivin alkuun)
+    ; Skip column 31 (move to the start of the next row)
     INC     IX
     INC     IY
     DEC     D : JR NZ, .nv_row

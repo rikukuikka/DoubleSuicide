@@ -1,24 +1,24 @@
 ; =============================================================================
-; title.asm — Otsikkoruutu ja pelimoodin valinta
+; title.asm — Title screen and game mode selection
 ; =============================================================================
 ;
-; Tile-indeksit: 0=tyhjä, 2-11=numerot, 12=kursori, 14-39=kirjaimet A-Z
+; Tile indices: 0=blank, 2-11=digits, 12=cursor, 14-39=letters A-Z
 
-; Muistissa oleva valinta (0=1P, 1=2P)
+; Selection stored in RAM (0=1P, 1=2P)
 TITLE_SEL   EQU 0xC07A
 
 ; =============================================================================
-; TITLE_SCREEN — näytä otsikkoruutu, odota valinta
-; Ulostulo: GAME_MODE = 1 tai 2
+; TITLE_SCREEN — show the title screen, wait for the selection
+; Output: GAME_MODE = 1 or 2
 ; =============================================================================
 TITLE_SCREEN:
-    ; Tyhjennä ruutu
+    ; Clear the screen
     LD      HL, VRAM_NAMETABLE
     LD      BC, 32*24
     LD      A, 0
     CALL    VDP_FILL
 
-    ; Lataa logo patternit bank 1:een (tileindeksit 40-71, offset 320 = 0x140)
+    ; Load the logo patterns into bank 1 (tile indices 40-71, offset 320 = 0x140)
     LD      HL, 0x0140 : CALL VDP_SETW
     LD      HL, LOGO_PATS
     LD      BC, LOGO_PATS_END - LOGO_PATS
@@ -26,7 +26,7 @@ TITLE_SCREEN:
     LD      A, (HL) : OUT (VDP_DATA), A : INC HL
     DEC     BC : LD A, B : OR C : JR NZ, .pll
 
-    ; Lataa logo värit bank 1:een (offset 0x2140)
+    ; Load the logo colors into bank 1 (offset 0x2140)
     LD      HL, 0x2140 : CALL VDP_SETW
     LD      HL, LOGO_COLS
     LD      BC, LOGO_COLS_END - LOGO_COLS
@@ -34,7 +34,7 @@ TITLE_SCREEN:
     LD      A, (HL) : OUT (VDP_DATA), A : INC HL
     DEC     BC : LD A, B : OR C : JR NZ, .cll
 
-    ; Piirrä logo nametauluun riveille 0-6, sarakkeille 8-22
+    ; Draw the logo into the name table on rows 0-6, columns 8-22
     LD      HL, VRAM_NAMETABLE + 0*32 + 8 : CALL VDP_SETW
     LD      A, 40  : LD B, 15
 .wl1:OUT   (VDP_DATA), A : INC A : DJNZ .wl1
@@ -57,28 +57,28 @@ TITLE_SCREEN:
     LD      A, 130 : LD B, 15
 .wl7:OUT   (VDP_DATA), A : INC A : DJNZ .wl7
 
-    ; Piirrä "1 PLAYER" riville 10, sarakkeesta 11
+    ; Draw "1 PLAYER" on row 10, starting at column 11
     LD      HL, VRAM_NAMETABLE + 10*32 + 11
     CALL    VDP_SETW
     LD      HL, TXT_1P
     CALL    WRITE_TEXT
 
-    ; Piirrä "2 PLAYERS" riville 12, sarakkeesta 11
+    ; Draw "2 PLAYERS" on row 12, starting at column 11
     LD      HL, VRAM_NAMETABLE + 12*32 + 11
     CALL    VDP_SETW
     LD      HL, TXT_2P
     CALL    WRITE_TEXT
 
-    ; Valinta oletuksena 1P
+    ; Selection defaults to 1P
     XOR     A : LD (TITLE_SEL), A
 
 .input_loop:
     CALL    WAIT_VBLANK
     LD      A, (FRAME_CTR) : INC A : LD (FRAME_CTR), A
-    CALL    UPDATE_SOUND         ; musiikki soi taustalla
+    CALL    UPDATE_SOUND         ; music keeps playing in the background
     CALL    READ_INPUTS
 
-    ; Ylös/alas vaihtaa valintaa
+    ; Up/down changes the selection
     LD      A, (P1_INPUT)
     LD      B, A
     AND     IN_UP
@@ -91,8 +91,8 @@ TITLE_SCREEN:
     LD      A, 1 : LD (TITLE_SEL), A     ; 1 = 2 PLAYERS
 .no_down:
 
-    ; Piirrä kursori (vilkkuva neliö)
-    ; Tyhjennä molemmat kursoripaikat ensin
+    ; Draw the cursor (a blinking square)
+    ; Clear both cursor spots first
     LD      HL, VRAM_NAMETABLE + 10*32 + 9 : CALL VDP_SETW
     XOR     A : OUT (VDP_DATA), A
     LD      HL, VRAM_NAMETABLE + 12*32 + 9 : CALL VDP_SETW
@@ -103,61 +103,61 @@ TITLE_SCREEN:
     LD      HL, VRAM_NAMETABLE + 12*32 + 21 : CALL VDP_SETW
     XOR     A : OUT (VDP_DATA), A
 
-    ; Vilkuta kursori (näkyvissä 75% ajasta)
+    ; Blink the cursor (visible 75% of the time)
     LD      A, (FRAME_CTR) : AND 0x10 : JR NZ, .no_cursor
 
-    ; Piirrä kursori valitulle riville
+    ; Draw the cursor on the selected row
     LD      A, (TITLE_SEL)
     OR      A
     JR      NZ, .cursor_2p
     LD      HL, VRAM_NAMETABLE + 10*32 + 9 : CALL VDP_SETW
-    LD      A, 12 : OUT (VDP_DATA), A    ; sininen pää
+    LD      A, 12 : OUT (VDP_DATA), A    ; blue end
     LD      HL, VRAM_NAMETABLE + 10*32 + 21 : CALL VDP_SETW
-    LD      A, 13 : OUT (VDP_DATA), A    ; vihreä pää
+    LD      A, 13 : OUT (VDP_DATA), A    ; green end
     JR      .no_cursor
 .cursor_2p:
     LD      HL, VRAM_NAMETABLE + 12*32 + 9 : CALL VDP_SETW
-    LD      A, 12 : OUT (VDP_DATA), A    ; sininen pää
+    LD      A, 12 : OUT (VDP_DATA), A    ; blue end
     LD      HL, VRAM_NAMETABLE + 12*32 + 21 : CALL VDP_SETW
-    LD      A, 13 : OUT (VDP_DATA), A    ; vihreä pää
+    LD      A, 13 : OUT (VDP_DATA), A    ; green end
 .no_cursor:
 
-    ; Tulipainike = vahvista valinta
+    ; Fire button = confirm the selection
     LD      A, B
     AND     IN_FIRE
     JP      Z, .input_loop
 
-    ; Odota että painike vapautetaan (ei jää pohjaan)
+    ; Wait for the button to be released (don't stay stuck)
 .wait_release:
     CALL    WAIT_VBLANK
     CALL    READ_INPUTS
     LD      A, (P1_INPUT) : AND IN_FIRE : JR NZ, .wait_release
 
-    ; Aseta GAME_MODE
+    ; Set GAME_MODE
     LD      A, (TITLE_SEL)
     INC     A                   ; 0→1, 1→2
     LD      (GAME_MODE), A
     RET
 
 ; =============================================================================
-; WRITE_TEXT — kirjoita merkkijono VRAM:iin (VDP-osoite asetettu)
-; HL = merkkijonon osoite (0-terminoitu ASCII)
+; WRITE_TEXT — write a string to VRAM (VDP address already set)
+; HL = string address (0-terminated ASCII)
 ; =============================================================================
 WRITE_TEXT:
     LD      A, (HL) : INC HL
-    OR      A : RET Z           ; 0 = loppu
+    OR      A : RET Z           ; 0 = end
     CP      ' '
     JR      Z, .space
     CP      '0' : JR C, .space
     CP      '9'+1 : JR C, .digit
     CP      'A' : JR C, .space
     CP      'Z'+1 : JR NC, .space
-    ; Kirjain A-Z → tile 14-39
+    ; Letter A-Z → tile 14-39
     SUB     'A' - 14
     OUT     (VDP_DATA), A
     JR      WRITE_TEXT
 .digit:
-    ; Numero 0-9 → tile 2-11
+    ; Digit 0-9 → tile 2-11
     SUB     '0' - 2
     OUT     (VDP_DATA), A
     JR      WRITE_TEXT
@@ -167,14 +167,14 @@ WRITE_TEXT:
     JR      WRITE_TEXT
 
 ; =============================================================================
-; Tekstit
+; Text strings
 ; =============================================================================
 TXT_1P:     DB "1 PLAYER", 0
 TXT_2P:     DB "2 PLAYERS", 0
 
 ; =============================================================================
-; Logo tile-data — 15 tiiliä leveä x 7 tiiliä korkea (120x56 pikseliä)
-; Tileindeksit 40-144, ladataan VRAM bank 0:aan (0x0140 / 0x2140)
+; Logo tile data — 15 tiles wide x 7 tiles tall (120x56 pixels)
+; Tile indices 40-144, loaded into VRAM bank 0 (0x0140 / 0x2140)
 ; =============================================================================
 LOGO_PATS:
     DB 0x0F,0x0F,0x03,0x03,0x03,0x03,0x03,0x03

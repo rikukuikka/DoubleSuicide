@@ -1,25 +1,25 @@
 ; =============================================================================
-; hud.asm — Pisteet ja elämät
+; hud.asm — Score and lives
 ; =============================================================================
 ;
-; Name table rivi 23 (alin) = HUD
-; Tileet:  0=tyhjä(musta) 1=seinä 2-11=digit 0-9  12=P1 ikoni  13=P2 ikoni
+; Name table row 23 (bottom) = HUD
+; Tiles:  0=blank(black) 1=wall 2-11=digit 0-9  12=P1 icon  13=P2 icon
 ;
-; Layout rivi 23:
+; Row 23 layout:
 ;   ■ 3  0000                ■ 3  0000
 ;   0 1 2 3456  7...23  24 25 26 27282930 31
 
-; Tile-numerot (DIGIT_PATS ladataan tilestä 2 alkaen)
-; 10 digitiä (2-11) + 2 ikonia (12-13) + 26 kirjainta (14-39) + 1 ovi (40)
+; Tile numbers (DIGIT_PATS is loaded starting at tile 2)
+; 10 digits (2-11) + 2 icons (12-13) + 26 letters (14-39) + 1 door (40)
 OVI_TILE    EQU 40
 
 ; RAM
-P1_SCORE_H  EQU 0xC070      ; BCD: tuhannet/sadat
-P1_SCORE_L  EQU 0xC071      ; BCD: kymmenet/ykköset
+P1_SCORE_H  EQU 0xC070      ; BCD: thousands/hundreds
+P1_SCORE_L  EQU 0xC071      ; BCD: tens/ones
 P2_SCORE_H  EQU 0xC072
 P2_SCORE_L  EQU 0xC073
 
-; Numero-patternit 0–9 (tileet 2–11)
+; Digit patterns 0-9 (tiles 2-11)
 DIGIT_PATS:
     DB #28,#6C,#C6,#C6,#C6,#C6,#6C,#28  ; '0'
     DB #18,#38,#18,#18,#18,#18,#18,#7E  ; '1'
@@ -31,10 +31,10 @@ DIGIT_PATS:
     DB #BA,#FE,#F8,#86,#0C,#1E,#1E,#0C  ; '7'
     DB #6C,#EE,#C6,#6C,#6C,#C6,#EE,#6C  ; '8'
     DB #58,#CC,#C6,#E6,#76,#06,#CC,#58  ; '9'
-; Pelaaja-ikonit (tileet 12, 13) — täytetty neliö
-    DB $30,$78,$FF,$FC,$F4,$FE,$F8,$7C  ; P1 ikoni
-    DB $0C,$1E,$FF,$3F,$2F,$7F,$1F,$3E  ; P2 ikoni
-; Patterns 14-39: kirjaimet A-Z
+; Player icons (tiles 12, 13) — filled square
+    DB $30,$78,$FF,$FC,$F4,$FE,$F8,$7C  ; P1 icon
+    DB $0C,$1E,$FF,$3F,$2F,$7F,$1F,$3E  ; P2 icon
+; Patterns 14-39: letters A-Z
     DB #30,#30,#38,#58,#48,#5C,#4C,#DE  ; 'A'
     DB #EC,#66,#66,#6C,#6C,#66,#66,#EC  ; 'B'
     DB #36,#66,#C2,#C0,#C0,#C2,#62,#34  ; 'C'
@@ -51,34 +51,34 @@ DIGIT_PATS:
     DB #C6,#E2,#F2,#7A,#3C,#9E,#8E,#C6  ; 'N'
     DB #6C,#C6,#C6,#C6,#C6,#C6,#C6,#6C  ; 'O'
     DB #EC,#66,#66,#66,#6C,#60,#60,#F0  ; 'P'
-    DB #6C,#C6,#C6,#C6,#C6,#D6,#6C,#0E  ; 'Q'  ;; UUSI
+    DB #6C,#C6,#C6,#C6,#C6,#D6,#6C,#0E  ; 'Q'  ;; NEW
     DB #EC,#66,#66,#66,#6C,#6C,#66,#E6  ; 'R'
     DB #7A,#E6,#E2,#78,#3C,#8E,#CE,#BC  ; 'S'
     DB #FE,#FE,#BA,#38,#38,#38,#38,#7C  ; 'T'
     DB #F6,#62,#62,#62,#62,#62,#62,#34  ; 'U'
     DB #F6,#62,#62,#34,#34,#34,#18,#18  ; 'V'
     DB #C2,#C2,#C2,#5A,#5A,#7E,#24,#24  ; 'W'
-    DB #EE,#6C,#6C,#38,#38,#6C,#6C,#EE  ; 'X'  ;; UUSI
+    DB #EE,#6C,#6C,#38,#38,#6C,#6C,#EE  ; 'X'  ;; NEW
     DB #F6,#62,#74,#38,#18,#18,#18,#3C  ; 'Y'
-    DB #FE,#86,#0C,#18,#30,#60,#C2,#FE  ; 'Z'  ;; UUSI
-; Ovi-tile
-    DB $55,$AA,$00,$00,$00,$00,$00,$00  ; Ylälaita
-; Tutkan laidat
-    DB $FF,$00,$00,$00,$00,$00,$00,$00 ; Ylälaita
-    DB $00,$00,$00,$00,$00,$00,$00,$FF ; Alalaita
-    DB $80,$80,$80,$80,$80,$80,$80,$80 ; Oikea laita
-    DB $01,$01,$01,$01,$01,$01,$01,$01 ; Vasen laita
-    DB $FF,$FF,$FF,$01,$EF,$EF,$EF,$01 ; Vasen laita muurin kohdalla
-    DB $FE,$FE,$FE,$80,$EF,$EF,$EF,$80 ; Oikea laita muurin kohdalla
+    DB #FE,#86,#0C,#18,#30,#60,#C2,#FE  ; 'Z'  ;; NEW
+; Door tile
+    DB $55,$AA,$00,$00,$00,$00,$00,$00  ; Top edge
+; Radar edges
+    DB $FF,$00,$00,$00,$00,$00,$00,$00 ; Top edge
+    DB $00,$00,$00,$00,$00,$00,$00,$FF ; Bottom edge
+    DB $80,$80,$80,$80,$80,$80,$80,$80 ; Right edge
+    DB $01,$01,$01,$01,$01,$01,$01,$01 ; Left edge
+    DB $FF,$FF,$FF,$01,$EF,$EF,$EF,$01 ; Left edge at the wall
+    DB $FE,$FE,$FE,$80,$EF,$EF,$EF,$80 ; Right edge at the wall
 
 
 DIGIT_PATS_END:
 
 ; =============================================================================
-; INIT_HUD — lataa HUD-patternit ja -värit VRAM:iin
+; INIT_HUD — load the HUD patterns and colors into VRAM
 ; =============================================================================
 INIT_HUD:
-    ; Lataa pattern 0 (tyhjä) kaikkiin pankkeihin — otsikkoruudun tausta
+    ; Load pattern 0 (blank) into all banks — the title screen background
     LD      HL, 0x0000 : CALL VDP_SETW
     LD      B, 8 : XOR A
 .z0: OUT    (VDP_DATA), A : DJNZ .z0
@@ -88,7 +88,7 @@ INIT_HUD:
     LD      HL, 0x1000 : CALL VDP_SETW
     LD      B, 8 : XOR A
 .z2: OUT    (VDP_DATA), A : DJNZ .z2
-    ; Pattern 0 väri (musta) kaikkiin pankkeihin
+    ; Pattern 0's color (black) into all banks
     LD      HL, 0x2000 : CALL VDP_SETW
     LD      B, 8 : LD A, 0x11
 .zc0: OUT   (VDP_DATA), A : DJNZ .zc0
@@ -98,25 +98,25 @@ INIT_HUD:
     LD      HL, 0x3000 : CALL VDP_SETW
     LD      B, 8 : LD A, 0x11
 .zc2: OUT   (VDP_DATA), A : DJNZ .zc2
-    ; Lataa digit+ikoni+kirjain patternit kolmeen pankkiin
+    ; Load the digit+icon+letter patterns into all three banks
     LD      HL, 0x0000 + 16 : CALL .load_dp
     LD      HL, 0x0800 + 16 : CALL .load_dp
     LD      HL, 0x1000 + 16 : CALL .load_dp
-    ; Lataa värit kolmeen pankkiin
+    ; Load the colors into all three banks
     LD      HL, 0x2000 + 16 : CALL LOAD_HUD_COLORS
     LD      HL, 0x2800 + 16 : CALL LOAD_HUD_COLORS
     LD      HL, 0x3000 + 16 : CALL LOAD_HUD_COLORS
-    ; Tutkan reunatileiden väri (sininen mustalla) — vain pankki 2
-    ; Tileet 41-46: reunat (6 tileä, kaikki rivit siniset). Tutkan sisältö
-    ; (vihollisten sijainnit) piirretään DRAW_RADAR:issa spriteillä, ei tileillä.
+    ; Color of the radar's border tiles (blue on black) — bank 2 only
+    ; Tiles 41-46: borders (6 tiles, all rows blue). The radar's contents
+    ; (enemy positions) are drawn by DRAW_RADAR using sprites, not tiles.
     LD      HL, 0x3000 + 41*8 : CALL VDP_SETW
     LD      B, 6*8 : LD A, 0x41
 .rc1: OUT   (VDP_DATA), A : DJNZ .rc1
-    ; Nollaa pisteet
+    ; Reset the score
     XOR     A
     LD      (P1_SCORE_H), A : LD (P1_SCORE_L), A
     LD      (P2_SCORE_H), A : LD (P2_SCORE_L), A
-    ; Merkitse likainen ja piirrä HUD
+    ; Mark dirty and draw the HUD
     LD      A, 1 : LD (HUD_DIRTY), A
     CALL    DRAW_HUD
     RET
@@ -131,23 +131,23 @@ INIT_HUD:
 
 LOAD_HUD_COLORS:
     CALL    VDP_SETW
-    ; 10 numeroa * 8 tavua: valkoinen mustalla (0xF1)
+    ; 10 digits * 8 bytes: white on black (0xF1)
     LD      B, 80
     LD      A, 0xF1
 .c1: OUT    (VDP_DATA), A : DJNZ .c1
-    ; P1 ikoni: 8 tavua sininen mustalla
+    ; P1 icon: 8 bytes blue on black
     LD      B, 8
     LD      A, 0x41
 .c2: OUT    (VDP_DATA), A : DJNZ .c2
-    ; P2 ikoni: 8 tavua vihreä mustalla
+    ; P2 icon: 8 bytes green on black
     LD      B, 8
     LD      A, 0x21
 .c3: OUT    (VDP_DATA), A : DJNZ .c3
-    ; Kirjaimet A-Z: 26 * 8 = 208 tavua, valkoinen mustalla
+    ; Letters A-Z: 26 * 8 = 208 bytes, white on black
     LD      B, 208
     LD      A, 0xF1
 .c4: OUT    (VDP_DATA), A : DJNZ .c4
-    ; Ovi-tile (40): 2 tavua 0x54 (pikselli-rivit 0-1), 6 tavua 0x51 (rivit 2-7)
+    ; Door tile (40): 2 bytes 0x54 (pixel rows 0-1), 6 bytes 0x51 (rows 2-7)
     LD      B, 2
     LD      A, 0x54
 .c5: OUT    (VDP_DATA), A : DJNZ .c5
@@ -157,128 +157,128 @@ LOAD_HUD_COLORS:
     RET
 
 ; =============================================================================
-; DRAW_HUD — piirrä pisteet ja elämät riville 23
+; DRAW_HUD — draw the score and lives on row 23
 ; =============================================================================
 DRAW_HUD:
-    LD      A, (HUD_DIRTY) : OR A : RET Z  ; ei muutoksia → ohita
-    XOR     A : LD (HUD_DIRTY), A           ; nollaa lippu
+    LD      A, (HUD_DIRTY) : OR A : RET Z  ; no changes → skip
+    XOR     A : LD (HUD_DIRTY), A           ; clear the flag
 
-    ; Rivi 21 — oma VDP_SETW, jotta ajoitusvirhe ei siirrä rivin 23 osoitetta
+    ; Row 21 — its own VDP_SETW, so a timing error doesn't shift row 23's address
     LD      HL, VRAM_NAMETABLE + 21*32 : CALL VDP_SETW
-    ; Tile 0: seinä
+    ; Tile 0: wall
     LD      A, 1 : OUT (VDP_DATA), A
-    ; Tile 1-2: ovi (2 kpl)
+    ; Tile 1-2: door (2x)
     LD      B, 2
     LD      A, OVI_TILE
 .ds1: OUT    (VDP_DATA), A : DJNZ .ds1
-    ; Tile 3-12: seinä (10 kpl)
+    ; Tile 3-12: wall (10x)
     LD      B, 11
     LD      A, 1
 .ws1: OUT   (VDP_DATA), A : DJNZ .ws1
-    ; Tile 13: tutkan vasen laita muurin kohdalla
+    ; Tile 13: radar's left edge at the wall
  ;   CALL    .vdp_dly
   ;  LD      A, RADAR_BORDER_L_WALL : OUT (VDP_DATA), A
-    ; Tile 14-17: tutkan yläreuna (kiinteä, sisältö piirretään spriteillä)
+    ; Tile 14-17: radar's top edge (fixed, contents drawn as sprites)
     CALL    .vdp_dly
     LD      B, 4 : LD A, RADAR_BORDER_TOP
 .rtop21: OUT (VDP_DATA), A : DJNZ .rtop21
-    ; Tile 18: tutkan oikea laita muurin kohdalla
+    ; Tile 18: radar's right edge at the wall
  ;   CALL    .vdp_dly
  ;   LD      A, RADAR_BORDER_R_WALL : OUT (VDP_DATA), A
-    ; Tile 19-28: seinä (10 kpl)
+    ; Tile 19-28: wall (10x)
     CALL    .vdp_dly
     LD      B, 11
     LD      A, 1
 .ws1b: OUT  (VDP_DATA), A : DJNZ .ws1b
-    ; Tile 30-31: ovi (2 kpl)
+    ; Tile 30-31: door (2x)
     LD      B, 2
     LD      A, OVI_TILE
 .ds2: OUT    (VDP_DATA), A : DJNZ .ds2
-    ; Tile 32: seinä
+    ; Tile 32: wall
     LD      A, 1 : OUT (VDP_DATA), A
 
-    ; Rivi 22 — oma VDP_SETW
+    ; Row 22 — its own VDP_SETW
     LD      HL, VRAM_NAMETABLE + 22*32 : CALL VDP_SETW
-    ; Tile 0: seinä
+    ; Tile 0: wall
     LD      A, 1 : OUT (VDP_DATA), A
-    ; Tile 1-2: tyhjä (2 kpl)
+    ; Tile 1-2: blank (2x)
     LD      B, 2
     XOR     A
 .sp1: OUT    (VDP_DATA), A : DJNZ .sp1
-    ; Tile 3: seinä
+    ; Tile 3: wall
     LD      A, 1 : OUT (VDP_DATA), A
-    ; Tile 4-12: tyhjä (9 kpl)
+    ; Tile 4-12: blank (9x)
     LD      B, 9
     XOR     A
 .sp2: OUT    (VDP_DATA), A : DJNZ .sp2
-    ; Tile 13: tutkan vasen laita
+    ; Tile 13: radar's left edge
     CALL    .vdp_dly
     LD      A, RADAR_BORDER_L : OUT (VDP_DATA), A
-    ; Tile 14-17: tyhjä (tutkan sisältö piirretään spriteillä)
+    ; Tile 14-17: blank (the radar's contents are drawn as sprites)
     CALL    .vdp_dly
     LD      B, 4 : XOR A
 .rmid22: OUT (VDP_DATA), A : DJNZ .rmid22
-    ; Tile 18: tutkan oikea laita
+    ; Tile 18: radar's right edge
     CALL    .vdp_dly
     LD      A, RADAR_BORDER_R : OUT (VDP_DATA), A
-    ; Tile 19-27: tyhjä (9 kpl)
+    ; Tile 19-27: blank (9x)
     CALL    .vdp_dly
     LD      B, 9
     XOR     A
 .sp2b: OUT   (VDP_DATA), A : DJNZ .sp2b
-    ; Tile 29: seinä
+    ; Tile 29: wall
     LD      A, 1 : OUT (VDP_DATA), A
-    ; Tile 30-31: tyhjä (2 kpl)
+    ; Tile 30-31: blank (2x)
     LD      B, 2
     XOR     A
 .sp3: OUT    (VDP_DATA), A : DJNZ .sp3
-    ; Tile 32: seinä
+    ; Tile 32: wall
     LD      A, 1 : OUT (VDP_DATA), A
 
-    ; Rivi 23 — oma VDP_SETW takaa oikean osoitteen riippumatta rivien 21-22 ajoituksesta
+    ; Row 23 — its own VDP_SETW guarantees the correct address regardless of rows 21-22's timing
     LD      HL, VRAM_NAMETABLE + 23*32 : CALL VDP_SETW
-    ; Tile 0: seinä
+    ; Tile 0: wall
     LD      A, 1 : OUT (VDP_DATA), A
-    ; Tile 1-2: tyhjä (2 kpl) — loop, CALL VDP_DELAY pitää ≥27T välin OUTien välillä
-    NOP : NOP : NOP : NOP   ; 11T(LD B,2+XOR A)+16T(NOPs)=27T gap ✓
+    ; Tile 1-2: blank (2x) — loop, CALL VDP_DELAY keeps a >=27T gap between OUTs
+    NOP : NOP : NOP : NOP   ; 11T(LD B,2+XOR A)+16T(NOPs)=27T gap OK
     LD      B, 2 : XOR A
 .sp4: OUT    (VDP_DATA), A : CALL .vdp_dly : DJNZ .sp4
-    ; Tile 3: seinä (DJNZ fall-through 8T + LD A,1 7T = 15T → lisää viivettä)
+    ; Tile 3: wall (DJNZ fall-through 8T + LD A,1 7T = 15T → needs more delay)
     NOP : NOP : NOP
     LD      A, 1 : OUT (VDP_DATA), A
-    ; Tile 4: P1 elämät (LD A,(nn) 13T + ADD 4T = 17T → tarvitaan viive)
+    ; Tile 4: P1 lives (LD A,(nn) 13T + ADD 4T = 17T → needs a delay)
     CALL    .vdp_dly
     LD      A, (P1_LIVES) : ADD A, 2 : OUT (VDP_DATA), A
-    ; Tile 5: tyhjä
+    ; Tile 5: blank
     CALL    .vdp_dly : XOR A : OUT (VDP_DATA), A
-    ; Tile 6: P1 ikoni (tilee 12)
+    ; Tile 6: P1 icon (tile 12)
     CALL    .vdp_dly : LD A, 12 : OUT (VDP_DATA), A
-    ; Tile 7: tyhjä
+    ; Tile 7: blank
     CALL    .vdp_dly : XOR A : OUT (VDP_DATA), A
-    ; Tile 8-11: P1 pisteet (4 BCD-numeroa) — LD A,(nn) antaa riittävän viiveen
+    ; Tile 8-11: P1 score (4 BCD digits) — LD A,(nn) gives enough delay
     LD      A, (P1_SCORE_H)
     RRCA : RRCA : RRCA : RRCA : AND 0x0F : ADD A, 2 : OUT (VDP_DATA), A
-    NOP                         ; 24T+4T=28T ≥ 27T ✓
+    NOP                         ; 24T+4T=28T >= 27T OK
     LD      A, (P1_SCORE_H) : AND 0x0F : ADD A, 2 : OUT (VDP_DATA), A
     LD      A, (P1_SCORE_L)
     RRCA : RRCA : RRCA : RRCA : AND 0x0F : ADD A, 2 : OUT (VDP_DATA), A
     NOP
     LD      A, (P1_SCORE_L) : AND 0x0F : ADD A, 2 : OUT (VDP_DATA), A
-    ; Tile 12: tyhjä
+    ; Tile 12: blank
     CALL    .vdp_dly : XOR A : OUT (VDP_DATA), A
-    ; Tile 13: tutkan vasen laita
+    ; Tile 13: radar's left edge
     CALL    .vdp_dly
     LD      A, RADAR_BORDER_L : OUT (VDP_DATA), A
-    ; Tile 14-17: tutkan alareuna (kiinteä, sisältö piirretään spriteillä)
+    ; Tile 14-17: radar's bottom edge (fixed, contents drawn as sprites)
     CALL    .vdp_dly
     LD      B, 4 : LD A, RADAR_BORDER_BOTTOM
 .rbot23: OUT (VDP_DATA), A : DJNZ .rbot23
-    ; Tile 18: tutkan oikea laita
+    ; Tile 18: radar's right edge
     CALL    .vdp_dly
     LD      A, RADAR_BORDER_R : OUT (VDP_DATA), A
-    ; Tile 19: tyhjä
+    ; Tile 19: blank
     CALL    .vdp_dly : XOR A : OUT (VDP_DATA), A
-    ; Tile 20-23: P2 pisteet
+    ; Tile 20-23: P2 score
     LD      A, (P2_SCORE_H)
     RRCA : RRCA : RRCA : RRCA : AND 0x0F : ADD A, 2 : OUT (VDP_DATA), A
     NOP
@@ -287,22 +287,22 @@ DRAW_HUD:
     RRCA : RRCA : RRCA : RRCA : AND 0x0F : ADD A, 2 : OUT (VDP_DATA), A
     NOP
     LD      A, (P2_SCORE_L) : AND 0x0F : ADD A, 2 : OUT (VDP_DATA), A
-    ; Tile 24: tyhjä
+    ; Tile 24: blank
     CALL    .vdp_dly : XOR A : OUT (VDP_DATA), A
-    ; Tile 25: P2 ikoni (tilee 13)
+    ; Tile 25: P2 icon (tile 13)
     CALL    .vdp_dly : LD A, 13 : OUT (VDP_DATA), A
-    ; Tile 26: tyhjä
+    ; Tile 26: blank
     CALL    .vdp_dly : XOR A : OUT (VDP_DATA), A
-    ; Tile 27: P2 elämät (LD A,(nn) 13T + ADD 4T = 17T → tarvitaan viive)
+    ; Tile 27: P2 lives (LD A,(nn) 13T + ADD 4T = 17T → needs a delay)
     CALL    .vdp_dly
     LD      A, (P2_LIVES) : ADD A, 2 : OUT (VDP_DATA), A
-    ; Tile 28: seinä
+    ; Tile 28: wall
     CALL    .vdp_dly : LD A, 1 : OUT (VDP_DATA), A
-    ; Tile 29-30: tyhjä (2 kpl)
-    NOP : NOP : NOP : NOP   ; 11T(LD B,2+XOR A)+16T=27T gap ✓
+    ; Tile 29-30: blank (2x)
+    NOP : NOP : NOP : NOP   ; 11T(LD B,2+XOR A)+16T=27T gap OK
     LD      B, 2 : XOR A
 .sp6: OUT    (VDP_DATA), A : CALL .vdp_dly : DJNZ .sp6
-    ; Tile 31: seinä
+    ; Tile 31: wall
     NOP : NOP : NOP
     LD      A, 1 : OUT (VDP_DATA), A
     RET
@@ -311,7 +311,7 @@ DRAW_HUD:
     RET
 
 ; =============================================================================
-; ADD_SCORE_P1 — lisää 100 pistettä P1:lle (BCD)
+; ADD_SCORE_P1 — add 100 points for P1 (BCD)
 ; =============================================================================
 ADD_SCORE_P1:
     LD      A, (P1_SCORE_H)
@@ -322,7 +322,7 @@ ADD_SCORE_P1:
     RET
 
 ; =============================================================================
-; ADD_SCORE_P2 — lisää 100 pistettä P2:lle
+; ADD_SCORE_P2 — add 100 points for P2
 ; =============================================================================
 ADD_SCORE_P2:
     LD      A, (P2_SCORE_H)

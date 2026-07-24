@@ -1,80 +1,80 @@
 ﻿; =============================================================================
-; gameover.asm â€” Game Over -ruutu
+; gameover.asm — Game Over screen
 ; =============================================================================
 ;
-; Kuva 144x52 px = 18x7 tiiliÃ¤ (tileet 40-165, bank 1 = rivit 8-14)
-; Patternit: VRAM 0x0940  (bank 1, tile 40 = 0x0800 + 40*8)
-; VÃ¤rit:     VRAM 0x2940  (bank 1, tile 40 = 0x2800 + 40*8)
-; Nametable: rivit 8-14, sarakkeet 7-24 (keskitetty)
+; Image 144x52 px = 18x7 tiles (tiles 40-165, bank 1 = rows 8-14)
+; Patterns: VRAM 0x0940  (bank 1, tile 40 = 0x0800 + 40*8)
+; Colors:   VRAM 0x2940  (bank 1, tile 40 = 0x2800 + 40*8)
+; Nametable: rows 8-14, columns 7-24 (centered)
 
 ; =============================================================================
-; CHECK_GAME_OVER â€” tarkista onko peli ohi; JP GAME_OVER_SCREEN jos kyllÃ¤
-; Kutsutaan MAINLOOP:issa CHECK_PLAYER_DEATH:n jÃ¤lkeen
+; CHECK_GAME_OVER — check whether the game is over; JP GAME_OVER_SCREEN if so
+; Called in MAINLOOP after CHECK_PLAYER_DEATH
 ; =============================================================================
 CHECK_GAME_OVER:
-    LD      A, (P1_DEAD_TMR) : OR A : RET NZ   ; P1 kuolinanimaatio kesken
-    LD      A, (P1_LIVES)    : OR A : RET NZ   ; P1 elÃ¤Ã¤ vielÃ¤
-    ; P1 kuollut ilman elÃ¤miÃ¤ â€” kaksinpelissÃ¤ tarkista P2
+    LD      A, (P1_DEAD_TMR) : OR A : RET NZ   ; P1's death animation still running
+    LD      A, (P1_LIVES)    : OR A : RET NZ   ; P1 still alive
+    ; P1 died with no lives left — in two-player mode check P2
     LD      A, (GAME_MODE) : CP 2 : JP NZ, GAME_OVER_SCREEN
     LD      A, (P2_DEAD_TMR) : OR A : RET NZ
     LD      A, (P2_LIVES)    : OR A : RET NZ
     JP      GAME_OVER_SCREEN
 
 ; =============================================================================
-; GAME_OVER_SCREEN â€” nÃ¤ytÃ¤ Game Over -kuva, odota tulta, palaa INIT:iin
+; GAME_OVER_SCREEN — show the Game Over image, wait for fire, return to INIT
 ; =============================================================================
 GAME_OVER_SCREEN:
-    ; PysÃ¤ytÃ¤ Ã¤Ã¤ni
+    ; Stop the sound
     XOR     A : LD (BGM_ACTIVE), A
     CALL    INIT_SOUND
 
-    ; Piilota kaikki 32 spritea täyttämällä koko SAT Y=0xD8:lla
+    ; Hide all 32 sprites by filling the whole SAT with Y=0xD8
     LD      HL, VRAM_SPRITE_ATT
     LD      BC, 128
     LD      A, 0xD8
     CALL    VDP_FILL
 
-    ; Tyhjennä nametable
+    ; Clear the nametable
     LD      HL, VRAM_NAMETABLE
     LD      BC, 32*24 : XOR A : CALL VDP_FILL
 
-    ; Lataa patternit bank 1:een, tile 40 (0x0800 + 40*8 = 0x0940)
+    ; Load the patterns into bank 1, tile 40 (0x0800 + 40*8 = 0x0940)
     LD      HL, 0x0940 : CALL VDP_SETW
     LD      HL, GAMEOVER_PATS
     LD      BC, GAMEOVER_PATS_END - GAMEOVER_PATS
 .pp:LD      A, (HL) : OUT (VDP_DATA), A : INC HL
     DEC     BC : LD A, B : OR C : JR NZ, .pp
 
-    ; Lataa vÃ¤rit bank 1:een, tile 40 (0x2800 + 40*8 = 0x2940)
+    ; Load the colors into bank 1, tile 40 (0x2800 + 40*8 = 0x2940)
     LD      HL, 0x2940 : CALL VDP_SETW
     LD      HL, GAMEOVER_COLS
     LD      BC, GAMEOVER_COLS_END - GAMEOVER_COLS
 .cc:LD      A, (HL) : OUT (VDP_DATA), A : INC HL
     DEC     BC : LD A, B : OR C : JR NZ, .cc
 
-    ; PiirrÃ¤ nametable: 7 riviÃ¤ Ã— 18 tiiltÃ¤, rivit 8-14, sarakkeet 7-24
-    ; Aloitusosoite: VRAM_NAMETABLE + 8*32 + 7 = 0x1907
+    ; Draw the nametable: 7 rows x 18 tiles, rows 8-14, columns 7-24
+    ; Start address: VRAM_NAMETABLE + 8*32 + 7 = 0x1907
     LD      HL, 0x1907
-    LD      A, 40           ; ensimmÃ¤inen tili-indeksi
-    LD      B, 7            ; 7 riviÃ¤
+    LD      A, 40           ; first tile index
+    LD      B, 7            ; 7 rows
 .drow:
     PUSH    BC
     PUSH    AF
-    CALL    VDP_SETW        ; kirjoitusosoite = HL (ei muuta HL)
+    CALL    VDP_SETW        ; write address = HL (doesn't change HL)
     POP     AF
-    LD      C, 18           ; 18 tiiltÃ¤ per rivi
+    LD      C, 18           ; 18 tiles per row
 .dcol:
     OUT     (VDP_DATA), A
     INC     A
     DEC     C : JR NZ, .dcol
-    LD      BC, 32 : ADD HL, BC   ; seuraava rivi
+    LD      BC, 32 : ADD HL, BC   ; next row
     POP     BC : DJNZ .drow
 
-    ; --- Näytä pisteet ---
-    ; Kirjoitetaan vblankin aikana (sama kuin DRAW_HUD) — TMS9918A vaatii
-    ; riittävän viiveen kirjoitusten välillä; silmukka+taulukko antaa ~37 sykliä/tavu.
+    ; --- Show the score ---
+    ; Written during vblank (same as DRAW_HUD) — the TMS9918A needs
+    ; enough delay between writes; the loop+table gives ~37 cycles/byte.
     CALL    WAIT_VBLANK
-    ; P1 SCORE riville 15 (sarake 9)
+    ; P1 SCORE on row 15 (column 9)
     LD      HL, 0x1800 + 15*32 + 9 : CALL VDP_SETW
     LD      HL, .go_hdr_p1
     LD      B, 9
@@ -85,7 +85,7 @@ GAME_OVER_SCREEN:
     LD      A, (P1_SCORE_L)
     RRCA : RRCA : RRCA : RRCA : AND 0x0F : ADD A, 2 : OUT (VDP_DATA), A
     LD      A, (P1_SCORE_L) : AND 0x0F : ADD A, 2 : OUT (VDP_DATA), A
-    ; P2 SCORE riville 17
+    ; P2 SCORE on row 17
     LD      HL, 0x1800 + 17*32 + 9 : CALL VDP_SETW
     LD      HL, .go_hdr_p2
     LD      B, 9
@@ -101,20 +101,20 @@ GAME_OVER_SCREEN:
 .go_hdr_p2: DB 29, 4, 0, 32, 16, 28, 31, 18, 0  ; P 2 _ S C O R E _
 .go_scores_done:
 
-    ; Odota hetki ennen syÃ¶tteen lukemista (60 framea = ~1s)
+    ; Wait a moment before reading input (60 frames = ~1s)
     LD      B, 60
 .delay:
     CALL    WAIT_VBLANK
     DJNZ    .delay
 
-    ; Odota tuli-nappia → palaa otsikkoruutuun
+    ; Wait for the fire button → return to the title screen
 .wait:
     CALL    WAIT_VBLANK
     CALL    READ_INPUTS
     LD      A, (P1_INPUT) : AND IN_FIRE : JR NZ, .pressed
     LD      A, (P2_INPUT) : AND IN_FIRE : JR NZ, .pressed
     JR      .wait
-    ; Odota että nappi vapautetaan (estää vahingon aloituksen)
+    ; Wait for the button to be released (prevents an accidental restart)
 .pressed:
     CALL    WAIT_VBLANK
     CALL    READ_INPUTS
@@ -123,7 +123,7 @@ GAME_OVER_SCREEN:
     JP      INIT
 
 ; =============================================================================
-; Game Over -kuvan tile-data (18Ã—7 = 126 tiiltÃ¤)
+; Game Over image tile data (18x7 = 126 tiles)
 ; =============================================================================
 
 GAMEOVER_PATS:
@@ -256,7 +256,7 @@ GAMEOVER_PATS:
 GAMEOVER_PATS_END:
 
 GAMEOVER_COLS:
-    ; ty=0..2: kayttajan maarittama gradientti
+    ; ty=0..2: user-defined gradient
     DB 0x51,0x51,0x51,0x51,0x51,0x51,0x51,0x51
     DB 0x51,0x51,0x51,0x51,0x51,0x51,0x51,0x51
     DB 0x51,0x51,0x51,0x51,0x51,0x51,0x51,0x51
@@ -311,7 +311,7 @@ GAMEOVER_COLS:
     DB 0xC1,0xC1,0xC1,0xC1,0xC1,0xC1,0xC1,0xC1
     DB 0xC1,0xC1,0xC1,0xC1,0xC1,0xC1,0xC1,0xC1
     DB 0xC1,0xC1,0xC1,0xC1,0xC1,0xC1,0xC1,0xC1
-    ; ty=3..6: autodetektoitu 2-vari-logiikalla
+    ; ty=3..6: auto-detected via 2-color logic
     DB 0xD1,0x11,0x11,0x11,0x11,0x11,0x11,0x11
     DB 0xD1,0x11,0x11,0x11,0x11,0x11,0x11,0x11
     DB 0xD1,0x11,0x11,0x11,0x11,0x11,0x11,0x11

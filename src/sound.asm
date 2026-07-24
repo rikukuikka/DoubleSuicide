@@ -1,15 +1,15 @@
 ; =============================================================================
-; sound.asm — VERSIO: SAHALAITA-BUZZER (laitteisto-envelope)
-; Kanava C soi envelope-generaattorilla äänitaajuudella
-; → aito sahalaita-aaltomuoto kanttiaallon sijaan!
-; R13 arvot: 0x08=sahalaita, 0x0E=kolmio, 0x0C=käänteinen saha
+; sound.asm — VERSION: SAWTOOTH BUZZER (hardware envelope)
+; Channel C plays through the envelope generator at the note frequency
+; → a genuine sawtooth waveform instead of a square wave!
+; R13 values: 0x08=sawtooth, 0x0E=triangle, 0x0C=inverted sawtooth
 ; =============================================================================
 ;
-; R7 mixer bitit 7,6 aina: bit7=1 (portB out), bit6=0 (portA in)
-; Kanavat: A = ampuminen, B = räjähdys, C = taustamusiikki
+; R7 mixer bits 7,6 always: bit7=1 (port B out), bit6=0 (port A in)
+; Channels: A = shooting, B = explosion, C = background music
 ;
-; R7 arvot (0b10xxxxx):
-;   Hiljainen:    0b10111111 = 0xBF
+; R7 values (0b10xxxxx):
+;   Silent:       0b10111111 = 0xBF
 ;   A tone:       0b10111110 = 0xBE
 ;   B noise:      0b10101111 = 0xAF
 ;   A+B:          0b10101110 = 0xAE
@@ -27,10 +27,10 @@ SFX_A_FREQ  EQU 0xC061
 SFX_B_CTR   EQU 0xC062
 
 ; BGM RAM
-BGM_PTR     EQU 0xC074      ; nykyinen paikka biisissä (2 tavua)
-BGM_START   EQU 0xC076      ; biisin alku looppausta varten (2 tavua)
-BGM_TIMER   EQU 0xC078      ; laskuri seuraavaan nuottiin
-BGM_ACTIVE  EQU 0xC079      ; 1 = musiikki soi
+BGM_PTR     EQU 0xC074      ; current position in the song (2 bytes)
+BGM_START   EQU 0xC076      ; song start, for looping (2 bytes)
+BGM_TIMER   EQU 0xC078      ; counter to the next note
+BGM_ACTIVE  EQU 0xC079      ; 1 = music is playing
 
 ; =============================================================================
 ; INIT_SOUND
@@ -38,23 +38,23 @@ BGM_ACTIVE  EQU 0xC079      ; 1 = musiikki soi
 INIT_SOUND:
     LD      A, 7      : OUT (PSG_REG_W), A
     LD      A, 0xBF   : OUT (PSG_DAT_W), A
-    ; Kanavat A, B, C hiljaa
+    ; Channels A, B, C silent
     LD      A, 8      : OUT (PSG_REG_W), A
     XOR     A         : OUT (PSG_DAT_W), A
     LD      A, 9      : OUT (PSG_REG_W), A
     XOR     A         : OUT (PSG_DAT_W), A
     LD      A, 10     : OUT (PSG_REG_W), A
     XOR     A         : OUT (PSG_DAT_W), A
-    ; SFX nollaus
+    ; SFX reset
     XOR     A
     LD      (SFX_A_CTR), A
     LD      (SFX_B_CTR), A
-    ; BGM alustus
+    ; BGM setup
     CALL    BGM_INIT
     RET
 
 ; =============================================================================
-; SFX_SHOOT — kanava A
+; SFX_SHOOT — channel A
 ; =============================================================================
 SFX_SHOOT:
     LD      A, 12 : LD (SFX_A_CTR), A
@@ -62,14 +62,14 @@ SFX_SHOOT:
     RET
 
 ; =============================================================================
-; SFX_ENEMY_DIE — kanava B
+; SFX_ENEMY_DIE — channel B
 ; =============================================================================
 SFX_ENEMY_DIE:
     LD      A, 16 : LD (SFX_B_CTR), A
     RET
 
 ; =============================================================================
-; BGM_INIT — aloita taustamusiikki
+; BGM_INIT — start the background music
 ; =============================================================================
 BGM_INIT:
     LD      HL, SONG_DATA
@@ -82,14 +82,14 @@ BGM_INIT:
     RET
 
 ; =============================================================================
-; BGM_UPDATE — päivitä taustamusiikki (kanava C)
+; BGM_UPDATE — update the background music (channel C)
 ; =============================================================================
 BGM_UPDATE:
     LD      A, (BGM_ACTIVE)
     OR      A
     RET     Z
 
-    ; Laskuri > 0 → odota
+    ; Counter > 0 → wait
     LD      A, (BGM_TIMER)
     OR      A
     JR      Z, .next_note
@@ -99,22 +99,22 @@ BGM_UPDATE:
 
 .next_note:
     LD      HL, (BGM_PTR)
-    LD      A, (HL) : INC HL    ; kesto
-    LD      E, (HL) : INC HL    ; taajuus fine
-    LD      D, (HL) : INC HL    ; taajuus coarse
+    LD      A, (HL) : INC HL    ; duration
+    LD      E, (HL) : INC HL    ; frequency fine
+    LD      D, (HL) : INC HL    ; frequency coarse
 
-    OR      A                   ; kesto = 0 = komento?
+    OR      A                   ; duration = 0 = command?
     JR      Z, .restart
 
     LD      (BGM_TIMER), A
     LD      (BGM_PTR), HL
 
-    ; Tauko? (taajuus = 0)
+    ; Rest? (frequency = 0)
     LD      A, E : OR D
     JR      Z, .mute
 
-    ; SAHALAITA-BUZZER: envelope toistuu äänitaajuudella
-    ; Envelope period = tone period / 16 → sama sävelkorkeus
+    ; SAWTOOTH BUZZER: the envelope repeats at the note frequency
+    ; Envelope period = tone period / 16 → same pitch
     SRL     D : RR E
     SRL     D : RR E
     SRL     D : RR E
@@ -123,18 +123,18 @@ BGM_UPDATE:
     LD      A, E  : OUT (PSG_DAT_W), A    ; envelope fine
     LD      A, 12 : OUT (PSG_REG_W), A
     LD      A, D  : OUT (PSG_DAT_W), A    ; envelope coarse
-    ; Kanava C envelope-moodiin (R10 bit 4 = 1)
+    ; Channel C into envelope mode (R10 bit 4 = 1)
     LD      A, 10 : OUT (PSG_REG_W), A
     LD      A, 0x10 : OUT (PSG_DAT_W), A
-    ; Envelope muoto: 0x08 = toistuva sahalaita
-    ; Kokeile myös: 0x0E = toistuva kolmio, 0x0C = käänteinen sahalaita
+    ; Envelope shape: 0x08 = repeating sawtooth
+    ; Also try: 0x0E = repeating triangle, 0x0C = inverted sawtooth
     LD      A, 13 : OUT (PSG_REG_W), A
     LD      A, 0x0E : OUT (PSG_DAT_W), A
     RET
 
 .mute:
     LD      A, 10 : OUT (PSG_REG_W), A
-    XOR     A     : OUT (PSG_DAT_W), A    ; kanava C hiljaa
+    XOR     A     : OUT (PSG_DAT_W), A    ; channel C silent
     RET
 
 .restart:
@@ -145,12 +145,12 @@ BGM_UPDATE:
     JR      .next_note
 
 ; =============================================================================
-; UPDATE_SOUND — SFX + mixer, kutsu kerran per frame
+; UPDATE_SOUND — SFX + mixer, call once per frame
 ; =============================================================================
 UPDATE_SOUND:
     CALL    BGM_UPDATE
 
-    ; --- Kanava A: ampuminen ---
+    ; --- Channel A: shooting ---
     LD      A, (SFX_A_CTR)
     OR      A
     JR      Z, .a_off
@@ -169,7 +169,7 @@ UPDATE_SOUND:
     XOR     A    : OUT (PSG_DAT_W), A
 
 .b_part:
-    ; --- Kanava B: räjähdys ---
+    ; --- Channel B: explosion ---
     LD      A, (SFX_B_CTR)
     OR      A
     JR      Z, .b_off
@@ -184,39 +184,39 @@ UPDATE_SOUND:
     XOR     A    : OUT (PSG_DAT_W), A
 
 .mixer:
-    ; R7: yhdistä SFX A, B ja BGM C
-    ; Aloita hiljaisesta: 0b10111111
+    ; R7: combine SFX A, B and BGM C
+    ; Start from silent: 0b10111111
     LD      D, 0xBF
 
     LD      A, (SFX_A_CTR) : OR A : JR Z, .no_a
-    RES     0, D            ; A tone päällä (bit 0 = 0)
+    RES     0, D            ; A tone on (bit 0 = 0)
 .no_a:
     LD      A, (SFX_B_CTR) : OR A : JR Z, .no_b
-    RES     4, D            ; B noise päällä (bit 4 = 0)
+    RES     4, D            ; B noise on (bit 4 = 0)
 .no_b:
-    ; Buzzer-moodi: kanavan C tone-mixer pysyy POIS (bit 2 = 1).
-    ; Ääni syntyy pelkästä envelope-amplitudimodulaatiosta —
-    ; tämä on se klassinen 'buzzer bass' -tekniikka.
+    ; Buzzer mode: channel C's tone mixer stays OFF (bit 2 = 1).
+    ; The sound comes purely from envelope amplitude modulation —
+    ; this is the classic 'buzzer bass' technique.
     LD      A, 7 : OUT (PSG_REG_W), A
     LD      A, D : OUT (PSG_DAT_W), A
     RET
 
 ; =============================================================================
-; Biisidata — luuppaava dungeon-marssi E-mollissa
-; Formaatti: 3 tavua per nuotti (kesto frameina, taajuus_lo, taajuus_hi)
-; Kesto 0 = restart
-; Taajuus 0,0 = tauko (mute)
+; Song data — a looping dungeon march in E minor
+; Format: 3 bytes per note (duration in frames, freq_lo, freq_hi)
+; Duration 0 = restart
+; Frequency 0,0 = rest (mute)
 ;
-; Nuotit (PSG period):
+; Notes (PSG period):
 ;   C3=0x0357 D3=762 (0x02FA) D#3=0x02CF  E3=679 (0x02A7)  F3=641 (0x0281)
 ;   G3=571 (0x023B)  A3=508 (0x01FC)  Bb3=480 (0x01E0)
 ;   B3=453 (0x01C5)
 ; CGD#DD#DD#DD#DD#
 ; =============================================================================
 SONG_DATA:
-    ; --- Fraasi 1 ---
+    ; --- Phrase 1 ---
     DB 12, 0xAC, 0x01    ; C4
-    DB 1,  0x00, 0x00    ; tauko
+    DB 1,  0x00, 0x00    ; rest
     DB 5, 0x1D, 0x01    ; G4
     DB 1,  0x00, 0x00
     DB 4, 0x68, 0x01    ; D#4
@@ -238,9 +238,9 @@ SONG_DATA:
     DB 12, 0x68, 0x01    ; D#4
     DB 1,  0x00, 0x00
 
-    ; --- Fraasi 2 ---
+    ; --- Phrase 2 ---
     DB 12, 0xAC, 0x01    ; C4
-    DB 1,  0x00, 0x00    ; tauko
+    DB 1,  0x00, 0x00    ; rest
     DB 5, 0x1D, 0x01    ; G4
     DB 1,  0x00, 0x00
     DB 4, 0x68, 0x01    ; D#4
@@ -252,17 +252,17 @@ SONG_DATA:
     DB 22, 0x7D, 0x01    ; D4
     DB 3,  0x00, 0x00
     DB 22, 0xAC, 0x01    ; C4
-    DB 3,  0x00, 0x00    ; tauko
+    DB 3,  0x00, 0x00    ; rest
 
-    ; --- Fraasi 3 ---
+    ; --- Phrase 3 ---
     DB 4, 0xAC, 0x01    ; C4
-    DB 1,  0x00, 0x00    ; tauko
+    DB 1,  0x00, 0x00    ; rest
     DB 4, 0xAC, 0x01    ; C4
-    DB 1,  0x00, 0x00    ; tauko
+    DB 1,  0x00, 0x00    ; rest
     DB 4, 0xAC, 0x01    ; C4
-    DB 1,  0x00, 0x00    ; tauko
+    DB 1,  0x00, 0x00    ; rest
     DB 4, 0xAC, 0x01    ; C4
-    DB 1,  0x00, 0x00    ; tauko
+    DB 1,  0x00, 0x00    ; rest
     DB 4, 0x68, 0x01    ; D#4
     DB 1,  0x00, 0x00
     DB 4, 0x7D, 0x01    ; D4
@@ -272,13 +272,13 @@ SONG_DATA:
     DB 4, 0x7D, 0x01    ; D4
     DB 1,  0x00, 0x00
     DB 4, 0xAC, 0x01    ; C4
-    DB 1,  0x00, 0x00    ; tauko
+    DB 1,  0x00, 0x00    ; rest
     DB 4, 0xAC, 0x01    ; C4
-    DB 1,  0x00, 0x00    ; tauko
+    DB 1,  0x00, 0x00    ; rest
     DB 4, 0xAC, 0x01    ; C4
-    DB 1,  0x00, 0x00    ; tauko
+    DB 1,  0x00, 0x00    ; rest
     DB 4, 0xAC, 0x01    ; C4
-    DB 1,  0x00, 0x00    ; tauko
+    DB 1,  0x00, 0x00    ; rest
     DB 4, 0x68, 0x01    ; D#4
     DB 1,  0x00, 0x00
     DB 4, 0x7D, 0x01    ; D4
@@ -288,13 +288,13 @@ SONG_DATA:
     DB 4, 0x7D, 0x01    ; D4
     DB 1,  0x00, 0x00
     DB 4, 0xAC, 0x01    ; C4
-    DB 1,  0x00, 0x00    ; tauko
+    DB 1,  0x00, 0x00    ; rest
     DB 4, 0xAC, 0x01    ; C4
-    DB 1,  0x00, 0x00    ; tauko
+    DB 1,  0x00, 0x00    ; rest
     DB 4, 0xAC, 0x01    ; C4
-    DB 1,  0x00, 0x00    ; tauko
+    DB 1,  0x00, 0x00    ; rest
     DB 4, 0xAC, 0x01    ; C4
-    DB 1,  0x00, 0x00    ; tauko
+    DB 1,  0x00, 0x00    ; rest
     DB 4, 0x68, 0x01    ; D#4
     DB 1,  0x00, 0x00
     DB 4, 0x7D, 0x01    ; D4
@@ -310,7 +310,7 @@ SONG_DATA:
     DB 4, 0x7D, 0x01    ; D4
     DB 1,  0x00, 0x00
     DB 22, 0xAC, 0x01    ; C4
-    DB 4,  0x00, 0x00    ; tauko
+    DB 4,  0x00, 0x00    ; rest
 
 
     ; --- Loop ---

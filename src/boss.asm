@@ -1,133 +1,133 @@
 ; =============================================================================
-; boss.asm — Wizard-pomo (boss-taso)
+; boss.asm — Wizard boss (boss level)
 ; =============================================================================
 ;
-; Wizard on normaalikokoinen 16x16-sprite, mutta kaksivärinen: kaksi
-; spriteä (WIZARD_SPRITE_BASE ja +1) samassa X/Y-kohdassa, eri pattern
-; ja väri. TMS9918A:ssa pienempi sprite-numero piirtyy PÄÄLLE, joten
-; WIZARD_SPRITE_BASE (korostusväri, osittainen pattern) on edessä ja
-; WIZARD_SPRITE_BASE+1 (perusväri, täysi pattern) takana — näin
-; korostusväri näkyy täysvärisen pohjan päällä.
+; The Wizard is a normal-sized 16x16 sprite, but two-colored: two sprites
+; (WIZARD_SPRITE_BASE and +1) at the same X/Y position, with different
+; patterns and colors. On the TMS9918A the lower sprite number is drawn ON
+; TOP, so WIZARD_SPRITE_BASE (highlight color, partial pattern) is in front
+; and WIZARD_SPRITE_BASE+1 (base color, full pattern) is behind — this way
+; the highlight color shows up over the full-color base.
 ;
-; SUUNTA+ANIMAATIO: WIZARD_DIR_PAT-taulukossa on 16 alkiota (4 suuntaa x
-; 2 animaatiokehystä x 2 kerrosta), samaan tapaan kuin GHOST_DIR_PAT. Kaikki
-; 16 pattern-ryhmää (WIZARD_PATS) ovat aitoa, toisistaan riippumatonta
-; grafiikkaa — väri9-versiot etukerroksena, väri13-versiot takana.
+; DIRECTION+ANIMATION: the WIZARD_DIR_PAT table has 16 entries (4 directions x
+; 2 animation frames x 2 layers), the same way as GHOST_DIR_PAT. All 16
+; pattern groups (WIZARD_PATS) are genuine, independent graphics — the
+; color-9 versions as the front layer, the color-13 versions behind.
 ;
-; Wizard "asuu" ENEMIES[0]:ssa samalla tietorakenteella kuin muutkin
-; viholliset (X,Y,suunta,tyyppi,aktiivinen,nopeus) — siksi UPDATE_ROBOT
-; kelpaa liikkumiseen sellaisenaan.
+; The Wizard "lives" in ENEMIES[0] using the same data structure as the
+; other enemies (X,Y,direction,type,active,speed) — that's why UPDATE_ROBOT
+; works for its movement as-is.
 ;
-; BOSS-TILA: kun BOSS_ACTIVE=1, SPAWN_ENEMIES_FOR_LEVEL ei spawnaa
-; Robotteja/Tankkeja/Haamuja lainkaan (vain Wizard + pelaajat). Koska
-; Wizard on nyt vain 3 spriteä (2 runko + 1 ammus) sloteissa 26-28, se
-; mahtuu jo ennestään vapaisiin sprite-indekseihin eikä törmää mihinkään
-; — MAINLOOP:in ei tarvitse ohittaa muita DRAW/UPDATE-kutsuja.
+; BOSS MODE: while BOSS_ACTIVE=1, SPAWN_ENEMIES_FOR_LEVEL doesn't spawn any
+; Robots/Tanks/Ghosts at all (only the Wizard + players). Since the Wizard
+; is now just 3 sprites (2 body + 1 bullet) in slots 26-28, it already fits
+; into sprite indices that were free and doesn't collide with anything —
+; MAINLOOP doesn't need to skip any other DRAW/UPDATE calls.
 ;
-; TUNNETTU RAJOITUS: CHECK_BULLET_HIT ja vihollisen kosketustarkistus
-; olettavat ~16x16 hitboxin — tämä pitää paikkansa nyt kun Wizard on
-; normaalikokoinen, joten erillistä korjausta ei (enää) tarvita.
+; KNOWN LIMITATION: CHECK_BULLET_HIT and the enemy-touch check assume a
+; ~16x16 hitbox — this still holds now that the Wizard is normal-sized, so
+; no separate fix is (still) needed.
 ; =============================================================================
 
-WIZARD_SPRITE_BASE    EQU 26      ; sprite 26 (edessä, korostus) + 27 (takana, pohja)
-WIZARD_BULLET_SPRITE  EQU 28      ; oma ammussprite
-WIZARD_TOTAL_SPRITES  EQU 3       ; 26,27,28 — hide_all-silmukalle
+WIZARD_SPRITE_BASE    EQU 26      ; sprite 26 (front, highlight) + 27 (back, base)
+WIZARD_BULLET_SPRITE  EQU 28      ; its own bullet sprite
+WIZARD_TOTAL_SPRITES  EQU 3       ; 26,27,28 — for the hide-all loop
 
-; Wizardin ja sen ammuksen nopeus: ks. CUR_WIZARD_SPEED_X2 / CUR_WIZARD_BULLET_SPEED
-; (enemy.asm) — kierroskohtaisia, ei enää kiinteitä vakioita.
-WIZARD_COLOR_A        EQU 13      ; takakerros (runko): magenta
-WIZARD_COLOR_B        EQU 9       ; etukerros (korostus): vaaleanpunainen/-punainen
-WIZARD_TELEPORT_INTERVAL EQU 180  ; framea (~3s 60fps) — säädettävissä
+; Speed of the Wizard and its bullet: see CUR_WIZARD_SPEED_X2 / CUR_WIZARD_BULLET_SPEED
+; (enemy.asm) — per-round now, no longer fixed constants.
+WIZARD_COLOR_A        EQU 13      ; back layer (body): magenta
+WIZARD_COLOR_B        EQU 9       ; front layer (highlight): pink/red
+WIZARD_TELEPORT_INTERVAL EQU 180  ; frames (~3s at 60fps) — tunable
 
-; WIZARD_PATS-datassa on 16 ryhmää (4 tavua/ryhmä = 16x16-pattern):
-; ryhmät 0-7 = väri9 (etukerros), järjestys Oikea1,Oikea2,Vasen1,Vasen2,
-; Alas1,Alas2,Ylös1,Ylös2; ryhmät 8-15 = sama järjestys väri13:lla (takakerros)
-WIZARD_PAT_BASE       EQU 108     ; GHOST_PAT_BASE(76)+32 patternia jälkeen
+; The WIZARD_PATS data has 16 groups (4 bytes/group = 16x16 pattern):
+; groups 0-7 = color 9 (front layer), order Right1,Right2,Left1,Left2,
+; Down1,Down2,Up1,Up2; groups 8-15 = same order with color 13 (back layer)
+WIZARD_PAT_BASE       EQU 108     ; GHOST_PAT_BASE(76)+32 patterns further
 
-; RAM (vapaa alue TANK_BULLETS:n (0xC099-0xC0A0) ja NAVMAP:in (0xC100) välissä)
-BOSS_ACTIVE           EQU 0xC0A1  ; 1 = boss-taso käynnissä
-WIZARD_BULLET         EQU 0xC0A2  ; 4 tavua: X,Y,suunta,aktiivinen
-WIZARD_TELEPORT_TIMER EQU 0xC0A6  ; 1 tavu: framelaskuri seuraavaan teleporttaukseen
+; RAM (free area between TANK_BULLETS (0xC099-0xC0A0) and NAVMAP (0xC100))
+BOSS_ACTIVE           EQU 0xC0A1  ; 1 = boss level running
+WIZARD_BULLET         EQU 0xC0A2  ; 4 bytes: X,Y,direction,active
+WIZARD_TELEPORT_TIMER EQU 0xC0A6  ; 1 byte: frame counter to the next teleport
 
-; Dummy-patternit (kvadrantit aina järjestyksessä: vasen-ylä, vasen-ala,
-; oikea-ylä, oikea-ala — sama käytäntö kuin muualla tässä tiedostossa)
+; Dummy patterns (quadrants always in order: top-left, bottom-left,
+; top-right, bottom-right — same convention as elsewhere in this file)
 WIZARD_PATS:
-    ; Oikea 1 väri 9
+    ; Right 1 color 9
     DB $00,$00,$00,$00,$03,$03,$01,$00
     DB $00,$00,$01,$03,$00,$00,$00,$00
     DB $00,$00,$00,$00,$A0,$F0,$C0,$00
     DB $00,$00,$20,$20,$00,$00,$00,$00
-    ; Oikea 2 väri 9
+    ; Right 2 color 9
     DB $00,$00,$00,$00,$03,$03,$01,$00
     DB $00,$00,$00,$0C,$00,$00,$00,$00
     DB $00,$00,$00,$00,$A0,$F0,$C0,$00
     DB $00,$08,$08,$00,$00,$00,$00,$00
-    ; Vasen 1 väri 9
+    ; Left 1 color 9
     DB $00,$00,$00,$00,$05,$0F,$03,$00
     DB $00,$00,$04,$04,$00,$00,$00,$00
     DB $00,$00,$00,$00,$C0,$C0,$80,$00
     DB $00,$00,$80,$C0,$00,$00,$00,$00
-    ; Vasen 2 väri 9
+    ; Left 2 color 9
     DB $00,$00,$00,$00,$05,$0F,$03,$00
     DB $00,$10,$10,$00,$00,$00,$00,$00
     DB $00,$00,$00,$00,$C0,$C0,$80,$00
     DB $00,$00,$00,$30,$00,$00,$00,$00
-    ; Alas 1 väri 9
+    ; Down 1 color 9
     DB $00,$00,$00,$00,$00,$00,$0C,$0E
     DB $0E,$06,$0C,$04,$00,$00,$00,$00
     DB $00,$00,$00,$00,$00,$00,$10,$30
     DB $00,$00,$30,$00,$00,$00,$00,$00
-    ; Alas 2 väri 9
+    ; Down 2 color 9
     DB $00,$00,$00,$00,$00,$00,$0C,$0E
     DB $0E,$06,$0C,$04,$00,$00,$00,$00
     DB $00,$00,$00,$00,$10,$10,$00,$00
     DB $00,$00,$00,$00,$60,$00,$00,$00
-    ; Ylös 1 väri 9
+    ; Up 1 color 9
     DB $00,$00,$00,$00,$00,$0C,$00,$00
     DB $0C,$08,$00,$00,$00,$00,$00,$00
     DB $00,$00,$00,$00,$20,$30,$60,$70
     DB $70,$30,$00,$00,$00,$00,$00,$00
-    ; Ylös 2 väri 9
+    ; Up 2 color 9
     DB $00,$00,$00,$06,$00,$00,$00,$00
     DB $00,$00,$08,$08,$00,$00,$00,$00
     DB $00,$00,$00,$00,$20,$30,$60,$70
     DB $70,$30,$00,$00,$00,$00,$00,$00
-    ; Oikea 1 väri 13
+    ; Right 1 color 13
     DB $02,$06,$07,$03,$00,$00,$00,$00
     DB $03,$03,$02,$00,$01,$01,$01,$01
     DB $A0,$B0,$F0,$E0,$00,$00,$00,$80
     DB $C0,$C6,$D8,$C0,$C0,$80,$80,$C0
-    ; Oikea 2 väri 13
+    ; Right 2 color 13
     DB $02,$06,$07,$03,$00,$00,$00,$00
     DB $03,$07,$0F,$01,$01,$03,$06,$06
     DB $A0,$B0,$F0,$E2,$02,$04,$04,$88
     DB $E8,$F0,$F0,$C0,$D0,$70,$30,$00
-    ; Vasen 1 väri 13
+    ; Left 1 color 13
     DB $05,$0D,$0F,$07,$00,$00,$00,$01
     DB $03,$63,$1B,$03,$03,$01,$01,$03
     DB $40,$60,$E0,$C0,$00,$00,$00,$00
     DB $C0,$C0,$40,$00,$80,$80,$80,$80
-    ; Vasen 2 väri 13
+    ; Left 2 color 13
     DB $05,$0D,$0F,$47,$40,$20,$20,$11
     DB $17,$0F,$0F,$03,$0B,$0E,$0C,$00
     DB $40,$60,$E0,$C0,$00,$00,$00,$00
     DB $C0,$E0,$F0,$80,$80,$C0,$60,$60
-    ; Alas 1 väri 13
+    ; Down 1 color 13
     DB $00,$00,$00,$00,$00,$60,$F0,$30
     DB $F1,$30,$F0,$60,$00,$00,$00,$00
     DB $00,$00,$00,$00,$00,$00,$E0,$CF
     DB $FF,$F9,$00,$20,$20,$40,$40,$00
-    ; Alas 2 väri 13
+    ; Down 2 color 13
     DB $00,$00,$00,$00,$00,$60,$F0,$30
     DB $F1,$30,$F0,$60,$01,$06,$18,$00
     DB $00,$00,$00,$00,$20,$63,$E7,$FC
     DB $F8,$FC,$E6,$6E,$80,$00,$00,$00
-    ; Ylös 1 väri 13
+    ; Up 1 color 13
     DB $00,$02,$02,$04,$04,$00,$9F,$FF
     DB $F3,$07,$00,$00,$00,$00,$00,$00
     DB $00,$00,$00,$00,$06,$0F,$0C,$8F
     DB $0C,$0F,$06,$00,$00,$00,$00,$00
-    ; Ylös 2 väri 13
+    ; Up 2 color 13
     DB $00,$00,$00,$01,$76,$67,$3F,$1F
     DB $3F,$E7,$C6,$04,$00,$00,$00,$00
     DB $00,$18,$60,$80,$06,$0F,$0C,$8F
@@ -135,27 +135,27 @@ WIZARD_PATS:
 WIZARD_PATS_END:
 
     ALIGN   16
-; Suunta+kehys → (etukerros väri9, takakerros väri13). Indeksi = (suunta*2+kehys)*2
-; WIZARD_PATS-ryhmät: 0=Oikea1 1=Oikea2 2=Vasen1 3=Vasen2 4=Alas1 5=Alas2
-; 6=Ylös1 7=Ylös2 (väri9), +8 sama järjestys väri13:lla. Ryhmä g = BASE+g*4.
+; Direction+frame → (front layer color 9, back layer color 13). Index = (direction*2+frame)*2
+; WIZARD_PATS groups: 0=Right1 1=Right2 2=Left1 3=Left2 4=Down1 5=Down2
+; 6=Up1 7=Up2 (color 9), +8 same order with color 13. Group g = BASE+g*4.
 WIZARD_DIR_PAT:
-    DB WIZARD_PAT_BASE+0,  WIZARD_PAT_BASE+32   ; DIR_RIGHT kehys0 (Oikea1)
-    DB WIZARD_PAT_BASE+4,  WIZARD_PAT_BASE+36   ; DIR_RIGHT kehys1 (Oikea2)
-    DB WIZARD_PAT_BASE+8,  WIZARD_PAT_BASE+40   ; DIR_LEFT  kehys0 (Vasen1)
-    DB WIZARD_PAT_BASE+12, WIZARD_PAT_BASE+44   ; DIR_LEFT  kehys1 (Vasen2)
-    DB WIZARD_PAT_BASE+24, WIZARD_PAT_BASE+56   ; DIR_UP    kehys0 (Ylös1)
-    DB WIZARD_PAT_BASE+28, WIZARD_PAT_BASE+60   ; DIR_UP    kehys1 (Ylös2)
-    DB WIZARD_PAT_BASE+16, WIZARD_PAT_BASE+48   ; DIR_DOWN  kehys0 (Alas1)
-    DB WIZARD_PAT_BASE+20, WIZARD_PAT_BASE+52   ; DIR_DOWN  kehys1 (Alas2)
+    DB WIZARD_PAT_BASE+0,  WIZARD_PAT_BASE+32   ; DIR_RIGHT frame0 (Right1)
+    DB WIZARD_PAT_BASE+4,  WIZARD_PAT_BASE+36   ; DIR_RIGHT frame1 (Right2)
+    DB WIZARD_PAT_BASE+8,  WIZARD_PAT_BASE+40   ; DIR_LEFT  frame0 (Left1)
+    DB WIZARD_PAT_BASE+12, WIZARD_PAT_BASE+44   ; DIR_LEFT  frame1 (Left2)
+    DB WIZARD_PAT_BASE+24, WIZARD_PAT_BASE+56   ; DIR_UP    frame0 (Up1)
+    DB WIZARD_PAT_BASE+28, WIZARD_PAT_BASE+60   ; DIR_UP    frame1 (Up2)
+    DB WIZARD_PAT_BASE+16, WIZARD_PAT_BASE+48   ; DIR_DOWN  frame0 (Down1)
+    DB WIZARD_PAT_BASE+20, WIZARD_PAT_BASE+52   ; DIR_DOWN  frame1 (Down2)
 
 ; =============================================================================
-; INIT_BOSS — lataa dummy-patternit ja nollaa boss-tilan
+; INIT_BOSS — load the dummy patterns and reset boss state
 ; =============================================================================
 INIT_BOSS:
     LD      HL, VRAM_SPRITE_PAT + WIZARD_PAT_BASE*8 : CALL VDP_SETW
     LD      HL, WIZARD_PATS
-    ; 512 tavua (16 ryhmää * 32) — DJNZ+LD B ei sovi (B on 8-bittinen),
-    ; käytetään BC-laskuria (sama korjaus kuin GHOST_PATS:issa)
+    ; 512 bytes (16 groups * 32) — DJNZ+LD B doesn't fit (B is 8-bit),
+    ; use a BC counter instead (same fix as in GHOST_PATS)
     LD      BC, WIZARD_PATS_END - WIZARD_PATS
 .lp: LD     A, (HL) : OUT (VDP_DATA), A : INC HL
     DEC     BC : LD A, B : OR C : JR NZ, .lp
@@ -166,8 +166,8 @@ INIT_BOSS:
     RET
 
 ; =============================================================================
-; SPAWN_WIZARD — luo Wizard ENEMIES[0]:aan
-; Sisääntulo: IX = ENEMIES (kutsuja asettaa)
+; SPAWN_WIZARD — create the Wizard in ENEMIES[0]
+; Input: IX = ENEMIES (set by the caller)
 ; =============================================================================
 SPAWN_WIZARD:
     CALL    PICK_SPAWN_POS
@@ -175,14 +175,14 @@ SPAWN_WIZARD:
     LD      (IX+3), ENEMY_WIZARD
     LD      (IX+4), 1
     LD      A, (CUR_WIZARD_SPEED_X2) : LD (IX+5), A
-    LD      (IX+6), 0                   ; puolipikselikertymä nollataan
-    LD      (IX+7), 0                   ; ampumisjäähdytys nollataan
+    LD      (IX+6), 0                   ; half-pixel accumulator reset
+    LD      (IX+7), 0                   ; shooting cooldown reset
     LD      A, WIZARD_TELEPORT_INTERVAL : LD (WIZARD_TELEPORT_TIMER), A
     RET
 
 ; =============================================================================
-; UPDATE_WIZARD — liikkuu kuten Robotti + teleporttaus kiinteällä välillä
-; Sisääntulo: IX = ENEMIES[0] (Wizard)
+; UPDATE_WIZARD — moves like the Robot + teleports at a fixed interval
+; Input: IX = ENEMIES[0] (Wizard)
 ; =============================================================================
 UPDATE_WIZARD:
     CALL    UPDATE_ROBOT
@@ -192,12 +192,13 @@ UPDATE_WIZARD:
     LD      (WIZARD_TELEPORT_TIMER), A
     OR      A : RET NZ
 
-    ; Ajastin nollassa — teleporttaa uuteen NAVMAP-pisteeseen ja nollaa ajastin.
-    ; Sekoita FRAME_CTR RAND-siemeneen ensin: koska teleport-väli on kiinteä
-    ; (180 framea), RAND-kutsujen määrä siitä edellisestä teleportista voi
-    ; olla sama joka kerta jos Wizardin liike on tarpeeksi deterministinen —
-    ; tällöin LFSR olisi aina samassa tilassa ja arpoisi saman pisteen.
-    ; FRAME_CTR kasvaa koko ajan, joten se rikkoo mahdollisen jakson.
+    ; Timer at zero — teleport to a new NAVMAP point and reset the timer.
+    ; Mix FRAME_CTR into the RAND seed first: since the teleport interval is
+    ; fixed (180 frames), the number of RAND calls since the previous
+    ; teleport could be the same every time if the Wizard's movement is
+    ; deterministic enough — in that case the LFSR would always be in the
+    ; same state and roll the same point. FRAME_CTR keeps increasing, so it
+    ; breaks any such cycle.
     LD      A, (FRAME_CTR)
     LD      HL, (RAND_SEED)
     XOR     L : LD L, A
@@ -207,15 +208,15 @@ UPDATE_WIZARD:
     RET
 
 ; =============================================================================
-; WIZARD_TRY_SHOOT — ampuu kuten Robotti (ENEMY_TRY_SHOOT), mutta omaan
-; WIZARD_BULLET-slottiin (ei jaeta ENEMY_BULLETSin kanssa). Kohde: P1 jos
-; linjassa, muuten P2.
-; Sisääntulo: IX = ENEMIES[0] (Wizard)
+; WIZARD_TRY_SHOOT — fires like the Robot (ENEMY_TRY_SHOOT), but into its own
+; WIZARD_BULLET slot (not shared with ENEMY_BULLETS). Target: P1 if
+; in line, otherwise P2.
+; Input: IX = ENEMIES[0] (Wizard)
 ; =============================================================================
 WIZARD_TRY_SHOOT:
     PUSH    BC : PUSH DE : PUSH HL
 
-    LD      A, (WIZARD_BULLET+3) : OR A : JR NZ, .done   ; jo aktiivinen
+    LD      A, (WIZARD_BULLET+3) : OR A : JR NZ, .done   ; already active
 
     LD      A, (P1_DEAD_TMR) : OR A : JR NZ, .try_p2
     LD      A, (P1_LIVES)    : OR A : JR Z, .try_p2
@@ -227,19 +228,19 @@ WIZARD_TRY_SHOOT:
     LD      A, (P2_X) : LD B, A : LD A, (P2_Y) : LD C, A
 
 .check:
-    ; Sama rivi? |wizardY - targetY| < 4
+    ; Same row? |wizardY - targetY| < 4
     LD      A, (IX+1) : SUB C
     JP      P, .ry_ok
     NEG
 .ry_ok:
     CP      4 : JR C, .same_row
 
-    ; Sama sarake? |wizardX - targetX| < 4
+    ; Same column? |wizardX - targetX| < 4
     LD      A, (IX+0) : SUB B
     JP      P, .cx_ok
     NEG
 .cx_ok:
-    CP      4 : JR NC, .done        ; ei linjassa
+    CP      4 : JR NC, .done        ; not in line
 
     LD      A, C : CP (IX+1)
     JR      NC, .col_down
@@ -255,8 +256,8 @@ WIZARD_TRY_SHOOT:
     LD      D, DIR_RIGHT
 
 .fire:
-    LD      A, (IX+2) : CP D : JR NZ, .done   ; ammu vain suuntaan jota kohti liikkuu
-    CALL    ENEMY_SHOOT_ROLL : JR NZ, .done    ; jäähdytys+50% (Z=ammu)
+    LD      A, (IX+2) : CP D : JR NZ, .done   ; only fire in the direction it's moving toward
+    CALL    ENEMY_SHOOT_ROLL : JR NZ, .done    ; cooldown+50% (Z=fire)
 
     LD      HL, WIZARD_BULLET
     LD      A, (IX+0) : LD (HL), A : INC HL
@@ -268,17 +269,17 @@ WIZARD_TRY_SHOOT:
     RET
 
 ; =============================================================================
-; UPDATE_WIZARD_BULLET — liikuta Wizardin ammus omalla nopeudellaan
-; (kopio UPDATE_ENEMY_BULLET:sta CUR_WIZARD_BULLET_SPEED:llä — ei voi käyttää
-; CUR_BULLET_SPEED:iä sellaisenaan, koska se on yhteinen Robotin/Tankin
-; ammuksille ja Wizardin kaava on eri, ks. enemy.asm)
+; UPDATE_WIZARD_BULLET — move the Wizard's bullet at its own speed
+; (a copy of UPDATE_ENEMY_BULLET using CUR_WIZARD_BULLET_SPEED — can't use
+; CUR_BULLET_SPEED as-is, since that's shared by the Robot/Tank bullets and
+; the Wizard's formula differs, see enemy.asm)
 ; =============================================================================
 UPDATE_WIZARD_BULLET:
     LD      IX, WIZARD_BULLET
-    LD      A, (IX+3) : OR A : RET Z        ; ei aktiivinen
+    LD      A, (IX+3) : OR A : RET Z        ; not active
 
-    LD      A, (CUR_WIZARD_BULLET_SPEED) : LD B, A  ; B = tämän hetken nopeus
-    LD      A, (IX+2)                        ; suunta
+    LD      A, (CUR_WIZARD_BULLET_SPEED) : LD B, A  ; B = current speed
+    LD      A, (IX+2)                        ; direction
     CP      DIR_UP : JR NZ, .wbu_nd
     LD      A, (IX+1) : SUB B
     JR      C, .wbu_deact
@@ -309,27 +310,27 @@ UPDATE_WIZARD_BULLET:
     RET
 
 ; =============================================================================
-; DRAW_WIZARD — piirrä Wizardin 2 spriteä + ammus. Piilottaa itsensä jos
-; boss ei aktiivinen. Käyttää .vdp_dly-viivettä (31T) jokaisen OUT:in
-; välissä, koska osa kirjoituksista on liian nopeita peräkkäin ilman sitä.
+; DRAW_WIZARD — draw the Wizard's 2 sprites + bullet. Hides itself if the
+; boss isn't active. Uses a .vdp_dly delay (31T) between each OUT, because
+; some of the writes are too fast back-to-back without it.
 ; =============================================================================
 DRAW_WIZARD:
     LD      A, (BOSS_ACTIVE) : OR A : JP Z, .hide_all
     LD      IX, ENEMIES                 ; Wizard = ENEMIES[0]
     LD      A, (IX+4) : OR A : JP Z, .hide_all
 
-    ; Pattern-indeksi WIZARD_DIR_PAT:iin = suunta*4 + kehys*2
-    ; (kehys = FRAME_CTR bitti 3, vaihtuu n. 8 framen välein, sama kuin Haamulla)
-    LD      A, (IX+2) : ADD A, A : ADD A, A : LD C, A      ; C = suunta*4
+    ; Pattern index into WIZARD_DIR_PAT = direction*4 + frame*2
+    ; (frame = FRAME_CTR bit 3, changes roughly every 8 frames, same as the Ghost)
+    LD      A, (IX+2) : ADD A, A : ADD A, A : LD C, A      ; C = direction*4
     LD      A, (FRAME_CTR) : SRL A : SRL A : SRL A : AND 1
-    ADD     A, A : ADD A, C                                  ; A = suunta*4 + kehys*2
+    ADD     A, A : ADD A, C                                  ; A = direction*4 + frame*2
     LD      HL, WIZARD_DIR_PAT : ADD A, L : LD L, A
-    LD      A, (HL) : LD D, A                                ; D = korostus-pattern
-    INC     HL : LD A, (HL) : LD E, A                         ; E = pohja-pattern
+    LD      A, (HL) : LD D, A                                ; D = highlight pattern
+    INC     HL : LD A, (HL) : LD E, A                         ; E = base pattern
 
     LD      HL, VRAM_SPRITE_ATT + WIZARD_SPRITE_BASE*4 : CALL VDP_SETW
 
-    ; Sprite 26 (edessä): korostusväri, suunta+kehys-pattern
+    ; Sprite 26 (front): highlight color, direction+frame pattern
     LD      A, (IX+1) : DEC A : OUT (VDP_DATA), A
     CALL    .vdp_dly
     LD      A, (IX+0) : OUT (VDP_DATA), A
@@ -339,7 +340,7 @@ DRAW_WIZARD:
     LD      A, WIZARD_COLOR_B : OUT (VDP_DATA), A
     CALL    .vdp_dly
 
-    ; Sprite 27 (takana): perusväri, sama suunta+kehys-pattern (pohja)
+    ; Sprite 27 (back): base color, same direction+frame pattern (base layer)
     LD      A, (IX+1) : DEC A : OUT (VDP_DATA), A
     CALL    .vdp_dly
     LD      A, (IX+0) : OUT (VDP_DATA), A
@@ -349,7 +350,7 @@ DRAW_WIZARD:
     LD      A, WIZARD_COLOR_A : OUT (VDP_DATA), A
     CALL    .vdp_dly
 
-    ; Wizardin ammus (oma sprite, ei jaettu ENEMY_BULLETSin kanssa)
+    ; The Wizard's bullet (its own sprite, not shared with ENEMY_BULLETS)
     LD      A, (WIZARD_BULLET+3) : OR A : JR Z, .hide_bullet
     LD      A, (WIZARD_BULLET+1) : DEC A : OUT (VDP_DATA), A
     CALL    .vdp_dly

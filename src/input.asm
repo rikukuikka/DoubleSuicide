@@ -1,19 +1,19 @@
 ; =============================================================================
-; input.asm — Näppäimistö- ja joystickluku
+; input.asm — Keyboard and joystick reading
 ; =============================================================================
 ;
-; Joystick port 1: PSG rekisteri 14
-;   bit0=ylös bit1=alas bit2=vasen bit3=oikea bit4=tuli
+; Joystick port 1: PSG register 14
+;   bit0=up bit1=down bit2=left bit3=right bit4=fire
 ;
-; Näppäimistö rivi 8 (testattu):
-;   bit5=ylös bit6=alas bit4=vasen bit7=oikea bit0=space
+; Keyboard row 8 (tested):
+;   bit5=up bit6=down bit4=left bit7=right bit0=space
 
 READ_INPUTS:
     ; --- P1: joystick port 1 ---
     LD      A, 15 : OUT (PSG_REG), A : IN A, (PSG_READ) : AND PSG_P1 : OUT (PSG_REG15), A
     LD      A, 14 : OUT (PSG_REG), A : IN A, (PSG_READ) : CPL : LD B, A
 
-    ; --- P1: näppäimistö rivi 8 ---
+    ; --- P1: keyboard row 8 ---
     LD      A, 8 : OUT (PPI_ROW), A : IN A, (PPI_COL) : CPL : LD E, A
     LD      A, E : AND 0x20 : JR Z, .nku : LD A, B : OR IN_UP    : LD B, A
 .nku:

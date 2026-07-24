@@ -1,42 +1,42 @@
 ; =============================================================================
-; bullet.asm — Ammukset
+; bullet.asm — Bullets
 ; =============================================================================
 ;
-; Tietorakenne (8 tavua per ammus, RAM:issa):
+; Data structure (8 bytes per bullet, in RAM):
 ;   offset 0: X
 ;   offset 1: Y
-;   offset 2: suunta (DIR_*)
-;   offset 3: omistaja (0=P1, 1=P2)
-;   offset 4: aktiivinen (1=kyllä)
+;   offset 2: direction (DIR_*)
+;   offset 3: owner (0=P1, 1=P2)
+;   offset 4: active (1=yes)
 ;
-; Yksi ammus per pelaaja
+; One bullet per player
 
 BULLET_SIZE     EQU 8
 BULLET_SPEED    EQU 4
-BULLET_COLOR    EQU 15          ; valkoinen
+BULLET_COLOR    EQU 15          ; white
 
-BULLETS         EQU 0xC050      ; 2*8=16 tavua RAM:issa
+BULLETS         EQU 0xC050      ; 2*8=16 bytes in RAM
 
-; Ammussprite patternit (pattern 8 ja 9)
+; Bullet sprite patterns (pattern 8 and 9)
 BULLET_PATS:
-    ; 16x16 ammus (pattern 12 = offset 96), pieni piste keskellä
-    ; Oikea/vasen
+    ; 16x16 bullet (pattern 12 = offset 96), small dot in the middle
+    ; Right/left
     DB $00,$00,$00,$00,$00,$00,$00,$03
     DB $03,$00,$00,$00,$00,$00,$00,$00
     DB $00,$00,$00,$00,$00,$00,$00,$C0
     DB $C0,$00,$00,$00,$00,$00,$00,$00
-    ; Ylös/alas
+    ; Up/down
     DB $00,$00,$00,$00,$00,$00,$01,$01
     DB $01,$01,$00,$00,$00,$00,$00,$00
     DB $00,$00,$00,$00,$00,$00,$80,$80
     DB $80,$80,$00,$00,$00,$00,$00,$00
 
-    ; Räjähdys 1
+    ; Explosion 1
     DB $00,$00,$00,$00,$00,$01,$02,$01
     DB $05,$01,$01,$02,$00,$00,$00,$00
     DB $00,$00,$00,$00,$40,$00,$50,$A0
     DB $C0,$50,$80,$20,$80,$00,$00,$00
-    ; Räjähdys 2
+    ; Explosion 2
     DB $00,$01,$0A,$05,$13,$14,$29,$03
     DB $25,$53,$06,$29,$02,$08,$02,$00
     DB $00,$20,$48,$40,$10,$E4,$B0,$EA
@@ -48,16 +48,16 @@ BULLET_DIR_PAT:
     DB 48, 48, 52, 52   ; DIR_RIGHT=0, DIR_LEFT=1, DIR_UP=2, DIR_DOWN=3
 
 ; =============================================================================
-; INIT_BULLETS — alusta ammukset
+; INIT_BULLETS — initialize bullets
 ; =============================================================================
 INIT_BULLETS:
-    ; Lataa sprite patternit (pattern 8 alkaen = offset 8*8=64)
-    LD      HL, VRAM_SPRITE_PAT + 384 : CALL VDP_SETW  ; 16x16: pelaaja 256 + Robotti 128
+    ; Load sprite patterns (starting at pattern 8 = offset 8*8=64)
+    LD      HL, VRAM_SPRITE_PAT + 384 : CALL VDP_SETW  ; 16x16: player 256 + Robot 128
     LD      HL, BULLET_PATS
     LD      B, BULLET_PATS_END - BULLET_PATS
 .pp:LD      A, (HL) : OUT (VDP_DATA), A : INC HL : DJNZ .pp
 
-    ; Nollaa molemmat ammukset
+    ; Clear both bullets
     LD      HL, BULLETS
     LD      B, BULLET_SIZE * 2
 .clr:XOR    A : LD (HL), A : INC HL : DJNZ .clr
@@ -65,31 +65,31 @@ INIT_BULLETS:
     RET
 
 ; =============================================================================
-; TRY_FIRE — yritä ampua jos tulipainike pohjassa ja ammus ei aktiivinen
-; Sisääntulo: B = omistaja (0=P1, 1=P2)
+; TRY_FIRE — try to fire if the fire button is held and the bullet isn't active
+; Input: B = owner (0=P1, 1=P2)
 ; =============================================================================
 TRY_FIRE:
-    ; Laske ammuksen RAM-osoite
+    ; Compute the bullet's RAM address
     LD      HL, BULLETS
     LD      A, B : OR A : JR Z, .got_addr
     LD      A, L : ADD A, BULLET_SIZE : LD L, A
 .got_addr:
-    ; Aktiivinen jo? Jos kyllä, ei ampua (ääni tulee vain uudelle ammukselle)
-    LD      A, B : ADD A, 4 : LD C, A   ; offset 4 = aktiivinen
+    ; Already active? If so, don't fire (the sound only plays for a new bullet)
+    LD      A, B : ADD A, 4 : LD C, A   ; offset 4 = active
     PUSH    HL
     LD      A, L : ADD A, 4 : LD L, A
     LD      A, (HL)
     POP     HL
-    OR      A : RET NZ      ; jo aktiivinen
+    OR      A : RET NZ      ; already active
 
-    ; Lue pelaajan sijainti ja suunta
+    ; Read the player's position and direction
     LD      A, B : OR A : JR NZ, .p2_data
     ; P1
     LD      A, (P1_X) : LD (HL), A     ; X
     INC     HL
     LD      A, (P1_Y) : LD (HL), A     ; Y
     INC     HL
-    LD      A, (P1_DIR) : LD (HL), A   ; suunta
+    LD      A, (P1_DIR) : LD (HL), A   ; direction
     JR      .set_owner
 .p2_data:
     LD      A, (P2_X) : LD (HL), A
@@ -99,31 +99,31 @@ TRY_FIRE:
     LD      A, (P2_DIR) : LD (HL), A
 .set_owner:
     INC     HL
-    LD      A, B : LD (HL), A          ; omistaja
+    LD      A, B : LD (HL), A          ; owner
     INC     HL
-    LD      A, 1 : LD (HL), A          ; aktiivinen = 1
+    LD      A, 1 : LD (HL), A          ; active = 1
     CALL    SFX_SHOOT
     RET
 
 ; =============================================================================
-; UPDATE_BULLET — liikuta yksi ammus (HL = ammuksen data)
+; UPDATE_BULLET — move a single bullet (HL = bullet data)
 ; =============================================================================
 UPDATE_BULLET:
-    ; Aktiivinen?
+    ; Active?
     PUSH    HL
     LD      A, L : ADD A, 4 : LD L, A
     LD      A, (HL)
     POP     HL
     OR      A : RET Z
 
-    ; Hae suunta
+    ; Get the direction
     PUSH    HL
     LD      A, L : ADD A, 2 : LD L, A
     LD      A, (HL)
     POP     HL
-    LD      D, A            ; D = suunta
+    LD      D, A            ; D = direction
 
-    ; Liiku suunnan mukaan
+    ; Move according to direction
     CP      DIR_UP : JR NZ, .nu
     LD      A, (HL) : LD B, A          ; X → B
     PUSH    HL : INC HL : LD A, (HL) : POP HL  ; Y
@@ -152,14 +152,14 @@ UPDATE_BULLET:
     LD      (HL), A
 
 .check_hit:
-    ; Tarkista törmäys seinään — 16x16 spriten keskipiste (X+8, Y+8)
+    ; Check for wall collision — 16x16 sprite's center point (X+8, Y+8)
     LD      A, (HL) : ADD A, 8 : LD B, A        ; B = X + 8
     PUSH    HL : INC HL : LD A, (HL) : POP HL
     ADD     A, 8 : LD C, A                       ; C = Y + 8
     CALL    IS_WALL
     JR      NZ, .deactivate
 
-    ; Tarkista törmäys vihollisiin
+    ; Check for collision with enemies
     CALL    CHECK_BULLET_HIT
     RET
 
@@ -171,70 +171,70 @@ UPDATE_BULLET:
     RET
 
 ; =============================================================================
-; CHECK_BULLET_HIT — tarkista osuuko ammus viholliseen
-; Sisääntulo: HL = ammuksen data
+; CHECK_BULLET_HIT — check whether a bullet hits an enemy
+; Input: HL = bullet data
 ; =============================================================================
 CHECK_BULLET_HIT:
-    ; Lue ammuksen sijainti
-    LD      A, (HL) : LD D, A          ; D = ammuksen X
+    ; Read the bullet's position
+    LD      A, (HL) : LD D, A          ; D = bullet X
     PUSH    HL : INC HL : LD A, (HL) : POP HL
-    LD      E, A                        ; E = ammuksen Y
+    LD      E, A                        ; E = bullet Y
 
-    ; Käy kaikki viholliset läpi
+    ; Go through all enemies
     PUSH    HL
     LD      HL, ENEMIES
     LD      B, MAX_ENEMIES
 .eloop:
     PUSH    BC : PUSH HL
 
-    ; Aktiivinen?
+    ; Active?
     PUSH    HL
     LD      A, L : ADD A, 4 : LD L, A
     LD      A, (HL)
     POP     HL
     OR      A : JR Z, .enext
 
-    ; Etäisyystarkistus — keskitetyt hitboxit: ammus 4x4 (puolikas 2) +
-    ; vihollinen 6x6 (puolikas 3) = kynnys 5 (ankkuripisteiden erotukselle,
-    ; sprite-offsetit kumoutuvat koska molemmat 16x16 vasen-yläkulmasta)
-    LD      A, (HL) : SUB D   ; vihollinen X - ammus X
+    ; Distance check — centered hitboxes: bullet 4x4 (half 2) +
+    ; enemy 6x6 (half 3) = threshold 5 (for the anchor-point difference;
+    ; the sprite offsets cancel out since both are 16x16 from the top-left corner)
+    LD      A, (HL) : SUB D   ; enemy X - bullet X
     JP      P, .ex_pos
     NEG
 .ex_pos:
     CP      5 : JR NC, .enext
 
     PUSH    HL : INC HL : LD A, (HL) : POP HL
-    SUB     E                 ; vihollinen Y - ammus Y
+    SUB     E                 ; enemy Y - bullet Y
     JP      P, .ey_pos
     NEG
 .ey_pos:
     CP      5 : JR NC, .enext
 
-    ; OSUMA — deaktivoi vihollinen
+    ; HIT — deactivate the enemy
     PUSH    HL
     LD      A, L : ADD A, 4 : LD L, A
     XOR     A : LD (HL), A
     POP     HL
-    ; Käynnistä räjähdys vihollisen sijaintiin
+    ; Start an explosion at the enemy's position
     LD      B, (HL)
     PUSH    HL : INC HL : LD C, (HL) : POP HL
     CALL    START_EXPLOSION
     CALL    SFX_ENEMY_DIE
 
-    ; Deaktivoi ammus ja lisää pisteet
+    ; Deactivate the bullet and add score
     POP     HL : POP     BC
-    POP     HL              ; HL = ammuksen osoite
-    ; Lue omistaja (offset 3)
+    POP     HL              ; HL = bullet address
+    ; Read the owner (offset 3)
     PUSH    HL
     INC     HL : INC HL : INC HL
-    LD      B, (HL)         ; B = omistaja (0=P1, 1=P2)
+    LD      B, (HL)         ; B = owner (0=P1, 1=P2)
     POP     HL
-    ; Deaktivoi ammus (offset 4 = 0)
+    ; Deactivate the bullet (offset 4 = 0)
     PUSH    HL : PUSH BC
     LD      A, L : ADD A, 4 : LD L, A
     XOR     A : LD (HL), A
     POP     BC : POP HL
-    ; Pisteet omistajan mukaan
+    ; Score based on owner
     LD      A, B : OR A
     JR      NZ, .sc_p2
     CALL    ADD_SCORE_P1
@@ -252,41 +252,41 @@ CHECK_BULLET_HIT:
     RET
 
 ; =============================================================================
-; UPDATE_BULLETS — päivitä molemmat ammukset ja tarkista tulipainikkeet
+; UPDATE_BULLETS — update both bullets and check the fire buttons
 ; =============================================================================
 UPDATE_BULLETS:
-    ; P1 tuli?
+    ; P1 fire?
     LD      A, (P1_INPUT) : AND IN_FIRE : JR Z, .no_p1_fire
     LD      B, 0 : CALL TRY_FIRE
 .no_p1_fire:
 
-    ; P2 tuli?
+    ; P2 fire?
     LD      A, (P2_INPUT) : AND IN_FIRE : JR Z, .no_p2_fire
     LD      B, 1 : CALL TRY_FIRE
 .no_p2_fire:
 
-    ; Liikuta ammukset
+    ; Move the bullets
     LD      HL, BULLETS : CALL UPDATE_BULLET
     LD      HL, BULLETS + BULLET_SIZE : CALL UPDATE_BULLET
     RET
 
 ; =============================================================================
-; DRAW_BULLETS — piirrä ammukset (spritet 8 ja 9)
+; DRAW_BULLETS — draw the bullets (sprites 8 and 9)
 ; =============================================================================
 DRAW_BULLETS:
-    ; P1 ammus = sprite 8
+    ; P1 bullet = sprite 8
     LD      A, (0xC054) : OR A : JR Z, .hide_p1
     LD      HL, VRAM_SPRITE_ATT + 32 : CALL VDP_SETW
     LD      A, (0xC051) : DEC A : OUT (VDP_DATA), A  ; Y, TMS9918A: Y-1
     LD      A, (0xC050) : OUT (VDP_DATA), A           ; X
     LD      HL, BULLET_DIR_PAT : LD A, (0xC052) : ADD A, L : LD L, A : LD A, (HL)
-    OUT     (VDP_DATA), A                             ; pattern suunnan mukaan
+    OUT     (VDP_DATA), A                             ; pattern based on direction
     LD      A, BULLET_COLOR : OUT (VDP_DATA), A
     JR      .p2_bullet
 .hide_p1:
     LD      HL, VRAM_SPRITE_ATT + 32 : CALL HIDE_SPRITE
 
-    ; P2 ammus = sprite 9
+    ; P2 bullet = sprite 9
 .p2_bullet:
     LD      A, (0xC05C) : OR A : JR Z, .hide_p2
     LD      HL, VRAM_SPRITE_ATT + 36 : CALL VDP_SETW
@@ -301,7 +301,7 @@ DRAW_BULLETS:
     RET
 
 ; =============================================================================
-; INIT_EXPLOSIONS — alusta räjähdykset
+; INIT_EXPLOSIONS — initialize explosions
 ; =============================================================================
 INIT_EXPLOSIONS:
     LD      HL, EXPLOSIONS
@@ -311,14 +311,14 @@ INIT_EXPLOSIONS:
     RET
 
 ; =============================================================================
-; START_EXPLOSION — käynnistä räjähdys
-; Sisääntulo: B=X, C=Y
+; START_EXPLOSION — start an explosion
+; Input: B=X, C=Y
 ; =============================================================================
 START_EXPLOSION:
     LD      HL, EXPLOSIONS + 2              ; slot 0 timer
     LD      A, (HL) : OR A : JR Z, .slot0
     LD      HL, EXPLOSIONS + EXPL_SIZE + 2  ; slot 1 timer
-    LD      A, (HL) : OR A : RET NZ         ; molemmat käytössä
+    LD      A, (HL) : OR A : RET NZ         ; both in use
     DEC     HL : DEC     HL                 ; slot 1 base (X)
     JR      .fill
 .slot0:
@@ -332,7 +332,7 @@ START_EXPLOSION:
     RET
 
 ; =============================================================================
-; UPDATE_EXPLOSIONS — laske räjähdysten ajastimet alas
+; UPDATE_EXPLOSIONS — count down explosion timers
 ; =============================================================================
 UPDATE_EXPLOSIONS:
     LD      HL, EXPLOSIONS + 2              ; slot 0 timer
@@ -345,11 +345,11 @@ UPDATE_EXPLOSIONS:
     RET
 
 ; =============================================================================
-; DRAW_EXPLOSIONS — piirrä räjähdykset (spritet 10 ja 11)
-; Timer 20-11 → Räjähdys 1 (kirkas), Timer 10-1 → Räjähdys 2 (haalistuva)
+; DRAW_EXPLOSIONS — draw explosions (sprites 10 and 11)
+; Timer 20-11 → Explosion 1 (bright), Timer 10-1 → Explosion 2 (fading)
 ; =============================================================================
 DRAW_EXPLOSIONS:
-    ; --- Räjähdys 0 → sprite 10 ---
+    ; --- Explosion 0 → sprite 10 ---
     LD      HL, EXPLOSIONS
     LD      A, (HL) : LD B, A   ; B = X
     INC     HL
@@ -370,7 +370,7 @@ DRAW_EXPLOSIONS:
 .hide0:
     LD      HL, VRAM_SPRITE_ATT + 40 : CALL HIDE_SPRITE
 
-    ; --- Räjähdys 1 → sprite 11 ---
+    ; --- Explosion 1 → sprite 11 ---
 .expl1:
     LD      HL, EXPLOSIONS + EXPL_SIZE
     LD      A, (HL) : LD B, A
