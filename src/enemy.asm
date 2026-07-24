@@ -262,61 +262,43 @@ MAX_WAVE_ENTRIES EQU (WAVE_TABLE_END - WAVE_TABLE) / 4
 
 ; =============================================================================
 ; RAND — 16-bit LFSR random number, output in A
-; Fibonacci LFSR, taps at bits 16,14,13,11 (= H's bits 7,5,4,2), polynomial
-; x^16+x^14+x^13+x^11+1 (maximal length 65535).
+; Fibonacci LFSR, taps at bits 16,14,13,11 (= state bits 15,13,12,10),
+; polynomial x^16+x^14+x^13+x^11+1 (maximal length 65535). Advances a whole
+; byte (8 bits) per call so consecutive outputs are decorrelated.
 ;
-; NOTE #1: the old version combined the feedback bit as the LSB using "OR H"
-; without clearing the target bit first — if the LSB coming out of the
-; rotation was already 1, the feedback could never write it back to zero.
-; This shortened the period to 22 states instead of 65535. Fixed:
-; SLA/RL explicitly clears the LSB before OR-ing in the feedback bit.
-;
-; NOTE #2: shifting by a single bit per call makes CONSECUTIVE calls
-; strongly correlated (the state changes by only 1 bit), because the whole
-; 16-bit state is nearly identical between two consecutive calls. This
-; showed up e.g. in PICK_SPAWN_POS (column then row, back-to-back), where
-; only ~64 distinct (column,row) combinations were ever possible even
-; though the LFSR's own period is full. Fixed by advancing a whole byte
-; (8 bits) per RAND call — this raises the number of distinct consecutive
-; pairs to nearly the theoretical maximum.
+; The 8 shift steps are computed WITHOUT a loop: every tap position is >= 10,
+; and the bits inserted during 8 left-shifts only ever reach positions 0-6,
+; so all 8 feedback bits depend on the ORIGINAL state S alone:
+;   F  = low8( (S>>8) XOR (S>>6) XOR (S>>5) XOR (S>>3) )
+;   S' = (low8(S) << 8) | F
+; Verified bit-exact against the old 8-step loop over all 65536 states
+; (Python simulation). ~220 T-states vs ~1100 for the loop version — this
+; matters because RANDOM_TURN can call RAND up to 16 times per blocked
+; enemy per frame.
+; Preserves BC, DE, HL.
 ; =============================================================================
 RAND:
-    PUSH    BC
     PUSH    DE
     PUSH    HL
     LD      HL, (RAND_SEED)
-    LD      B, 8               ; advance a whole byte (8 bits) per call
-.rstep:
-    ; feedback = H.bit7 XOR H.bit2 XOR H.bit4 XOR H.bit5 (taps 16,11,13,14)
-    LD      A, H
-    RLCA                        ; A.bit0 = H.bit7
-    LD      C, A
-    LD      A, H
-    RRCA : RRCA                 ; A.bit0 = H.bit2
-    XOR     C
-    LD      C, A
-    LD      A, H
-    RLCA : RLCA : RLCA : RLCA   ; A.bit0 = H.bit4
-    XOR     C
-    LD      C, A
-    LD      A, H
-    RLCA : RLCA : RLCA          ; A.bit0 = H.bit5
-    XOR     C
-    AND     0x01
-    LD      E, A                ; E.bit0 = feedback
-
-    ; Shift HL left 1 bit (LSB clears to zero), add the feedback as the LSB
-    SLA     L
-    RL      H
-    LD      A, L : OR E : LD L, A
-    DJNZ    .rstep
-
+    LD      D, H
+    LD      E, L
+    LD      A, H                ; A = low8(S>>8)
+    SRL     D : RR E
+    SRL     D : RR E
+    SRL     D : RR E            ; DE = S>>3
+    XOR     E                   ; A ^= low8(S>>3)
+    SRL     D : RR E
+    SRL     D : RR E            ; DE = S>>5
+    XOR     E                   ; A ^= low8(S>>5)
+    SRL     D : RR E            ; DE = S>>6
+    XOR     E                   ; A = F (all 8 new bits)
+    LD      H, L                ; new high byte = old low byte
+    LD      L, A                ; new low byte = F
     LD      (RAND_SEED), HL
-    LD      A, L
     POP     HL
     POP     DE
-    POP     BC
-    RET
+    RET                         ; A = new random byte
 
 ; =============================================================================
 ; INIT_ENEMIES

@@ -34,33 +34,35 @@ MAZE:
 
 ; IS_WALL — collision check
 ; Input: B=X C=Y → Z=free NZ=wall
-; Preserves HL, DE (BC is not modified and does not need saving)
+; Preserves HL; BC and DE are not touched at all.
+; Hottest routine in the game (up to ~30 calls/frame), so the address math
+; is minimized: (Y/8)*32 is computed as (Y AND 0xF8)*4, and the HUD-row
+; test is done directly on the pixel Y (tile row 21 starts at Y=168).
 IS_WALL:
     PUSH    HL
-    PUSH    DE
-    LD      A, B : SRL A : SRL A : SRL A : LD D, A    ; D = column = X/8
-    LD      A, C : SRL A : SRL A : SRL A : LD E, A    ; E = row    = Y/8
-    ; HUD rows (21+): handle separately so we don't read past the end of MAZE
-    LD      A, E : CP 21 : JR C, .normal
-    JR      NZ, .wall                   ; row > 21 → wall
+    ; HUD rows (Y >= 168 = tile row 21+): handle separately so we don't
+    ; read past the end of MAZE
+    LD      A, C : CP 168 : JR C, .normal
+    CP      176 : JR NC, .wall          ; row 22+ → wall
     ; Row 21: door openings at columns 1-2 and 29-30
-    LD      A, D
+    LD      A, B : SRL A : SRL A : SRL A    ; A = column = X/8
     CP      1  : JR C,  .wall           ; column 0 → wall
     CP      3  : JR C,  .free           ; columns 1-2 → door open
     CP      29 : JR C,  .wall           ; columns 3-28 → wall
     CP      31 : JR C,  .free           ; columns 29-30 → door open
 .wall:
-    POP     DE : POP     HL : OR      1 : RET
+    POP     HL : OR      1 : RET
 .free:
-    POP     DE : POP     HL : XOR     A : RET
+    POP     HL : XOR     A : RET
 .normal:
-    LD      H, 0 : LD L, E
-    ADD     HL, HL : ADD HL, HL : ADD HL, HL : ADD HL, HL : ADD HL, HL
-    LD      A, L : ADD A, D : LD L, A
-    LD      A, L : ADD A, LOW MAZE : LD L, A
+    AND     0xF8                            ; A still holds Y; (Y AND 0xF8)*4 = (Y/8)*32
+    LD      L, A : LD H, 0
+    ADD     HL, HL : ADD HL, HL             ; HL = row*32
+    LD      A, B : SRL A : SRL A : SRL A    ; A = column = X/8
+    ADD     A, L                            ; never carries: L is a multiple of 32, column <= 31
+    ADD     A, LOW MAZE : LD L, A
     LD      A, H : ADC A, HIGH MAZE : LD H, A
     LD      A, (HL)
-    POP     DE
     POP     HL
     OR      A
     RET

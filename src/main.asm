@@ -62,6 +62,7 @@ INIT:
     LD      A, 0xD8
     CALL    VDP_FILL
     CALL    WAIT_VBLANK                 ; sync VDP writes to vblank
+    CALL    DRAW_HUD_STATIC             ; rows 21-22 never change during play
     CALL    DRAW_HUD
     CALL    DRAW_RADAR
 

@@ -155,13 +155,12 @@ LOAD_HUD_COLORS:
     RET
 
 ; =============================================================================
-; DRAW_HUD — draw the score and lives on row 23
+; DRAW_HUD_STATIC — draw the static HUD rows 21-22 (walls, doors, radar
+; frame). These never change during play, so INIT calls this once (during
+; vblank) instead of redrawing them on every HUD_DIRTY refresh.
 ; =============================================================================
-DRAW_HUD:
-    LD      A, (HUD_DIRTY) : OR A : RET Z  ; no changes → skip
-    XOR     A : LD (HUD_DIRTY), A           ; clear the flag
-
-    ; Row 21 — its own VDP_SETW, so a timing error doesn't shift row 23's address
+DRAW_HUD_STATIC:
+    ; Row 21 — its own VDP_SETW, so a timing error doesn't shift row 22's address
     LD      HL, VRAM_NAMETABLE + 21*32 : CALL VDP_SETW
     ; Tile 0: wall
     LD      A, 1 : OUT (VDP_DATA), A
@@ -226,8 +225,20 @@ DRAW_HUD:
 .sp3: OUT    (VDP_DATA), A : DJNZ .sp3
     ; Tile 32: wall
     LD      A, 1 : OUT (VDP_DATA), A
+    RET
+.vdp_dly:
+    NOP                         ; CALL(17T) + NOP(4T) + RET(10T) = 31T gap
+    RET
 
-    ; Row 23 — its own VDP_SETW guarantees the correct address regardless of rows 21-22's timing
+; =============================================================================
+; DRAW_HUD — draw the dynamic HUD row 23 (score and lives). Rows 21-22 are
+; static and drawn once by DRAW_HUD_STATIC at INIT.
+; =============================================================================
+DRAW_HUD:
+    LD      A, (HUD_DIRTY) : OR A : RET Z  ; no changes → skip
+    XOR     A : LD (HUD_DIRTY), A           ; clear the flag
+
+    ; Row 23
     LD      HL, VRAM_NAMETABLE + 23*32 : CALL VDP_SETW
     ; Tile 0: wall
     LD      A, 1 : OUT (VDP_DATA), A
