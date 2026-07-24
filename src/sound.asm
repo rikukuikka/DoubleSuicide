@@ -18,8 +18,8 @@
 ;   B+C:          0b10101011 = 0xAB
 ;   A+B+C:        0b10101010 = 0xAA
 
-PSG_REG_W   EQU 0xA0
-PSG_DAT_W   EQU 0xA1
+; Uses PSG_REG (register select) and PSG_REG15 (data write), both defined
+; in constants.asm — same physical ports input.asm uses for the joystick.
 
 ; SFX RAM
 SFX_A_CTR   EQU 0xC060
@@ -36,15 +36,15 @@ BGM_ACTIVE  EQU 0xC079      ; 1 = music is playing
 ; INIT_SOUND
 ; =============================================================================
 INIT_SOUND:
-    LD      A, 7      : OUT (PSG_REG_W), A
-    LD      A, 0xBF   : OUT (PSG_DAT_W), A
+    LD      A, 7      : OUT (PSG_REG), A
+    LD      A, 0xBF   : OUT (PSG_REG15), A
     ; Channels A, B, C silent
-    LD      A, 8      : OUT (PSG_REG_W), A
-    XOR     A         : OUT (PSG_DAT_W), A
-    LD      A, 9      : OUT (PSG_REG_W), A
-    XOR     A         : OUT (PSG_DAT_W), A
-    LD      A, 10     : OUT (PSG_REG_W), A
-    XOR     A         : OUT (PSG_DAT_W), A
+    LD      A, 8      : OUT (PSG_REG), A
+    XOR     A         : OUT (PSG_REG15), A
+    LD      A, 9      : OUT (PSG_REG), A
+    XOR     A         : OUT (PSG_REG15), A
+    LD      A, 10     : OUT (PSG_REG), A
+    XOR     A         : OUT (PSG_REG15), A
     ; SFX reset
     XOR     A
     LD      (SFX_A_CTR), A
@@ -119,22 +119,22 @@ BGM_UPDATE:
     SRL     D : RR E
     SRL     D : RR E
     SRL     D : RR E
-    LD      A, 11 : OUT (PSG_REG_W), A
-    LD      A, E  : OUT (PSG_DAT_W), A    ; envelope fine
-    LD      A, 12 : OUT (PSG_REG_W), A
-    LD      A, D  : OUT (PSG_DAT_W), A    ; envelope coarse
+    LD      A, 11 : OUT (PSG_REG), A
+    LD      A, E  : OUT (PSG_REG15), A    ; envelope fine
+    LD      A, 12 : OUT (PSG_REG), A
+    LD      A, D  : OUT (PSG_REG15), A    ; envelope coarse
     ; Channel C into envelope mode (R10 bit 4 = 1)
-    LD      A, 10 : OUT (PSG_REG_W), A
-    LD      A, 0x10 : OUT (PSG_DAT_W), A
+    LD      A, 10 : OUT (PSG_REG), A
+    LD      A, 0x10 : OUT (PSG_REG15), A
     ; Envelope shape: 0x08 = repeating sawtooth
     ; Also try: 0x0E = repeating triangle, 0x0C = inverted sawtooth
-    LD      A, 13 : OUT (PSG_REG_W), A
-    LD      A, 0x0E : OUT (PSG_DAT_W), A
+    LD      A, 13 : OUT (PSG_REG), A
+    LD      A, 0x0E : OUT (PSG_REG15), A
     RET
 
 .mute:
-    LD      A, 10 : OUT (PSG_REG_W), A
-    XOR     A     : OUT (PSG_DAT_W), A    ; channel C silent
+    LD      A, 10 : OUT (PSG_REG), A
+    XOR     A     : OUT (PSG_REG15), A    ; channel C silent
     RET
 
 .restart:
@@ -157,16 +157,16 @@ UPDATE_SOUND:
     DEC     A : LD (SFX_A_CTR), A
     LD      A, (SFX_A_FREQ)
     ADD     A, 12 : LD (SFX_A_FREQ), A
-    LD      A, 0  : OUT (PSG_REG_W), A
-    LD      A, (SFX_A_FREQ) : OUT (PSG_DAT_W), A
-    LD      A, 1  : OUT (PSG_REG_W), A
-    XOR     A     : OUT (PSG_DAT_W), A
-    LD      A, 8  : OUT (PSG_REG_W), A
-    LD      A, 13 : OUT (PSG_DAT_W), A
+    LD      A, 0  : OUT (PSG_REG), A
+    LD      A, (SFX_A_FREQ) : OUT (PSG_REG15), A
+    LD      A, 1  : OUT (PSG_REG), A
+    XOR     A     : OUT (PSG_REG15), A
+    LD      A, 8  : OUT (PSG_REG), A
+    LD      A, 13 : OUT (PSG_REG15), A
     JR      .b_part
 .a_off:
-    LD      A, 8 : OUT (PSG_REG_W), A
-    XOR     A    : OUT (PSG_DAT_W), A
+    LD      A, 8 : OUT (PSG_REG), A
+    XOR     A    : OUT (PSG_REG15), A
 
 .b_part:
     ; --- Channel B: explosion ---
@@ -174,14 +174,14 @@ UPDATE_SOUND:
     OR      A
     JR      Z, .b_off
     DEC     A : LD (SFX_B_CTR), A
-    LD      A, 6 : OUT (PSG_REG_W), A
-    LD      A, 7 : OUT (PSG_DAT_W), A
-    LD      A, 9 : OUT (PSG_REG_W), A
-    LD      A, (SFX_B_CTR) : OUT (PSG_DAT_W), A
+    LD      A, 6 : OUT (PSG_REG), A
+    LD      A, 7 : OUT (PSG_REG15), A
+    LD      A, 9 : OUT (PSG_REG), A
+    LD      A, (SFX_B_CTR) : OUT (PSG_REG15), A
     JR      .mixer
 .b_off:
-    LD      A, 9 : OUT (PSG_REG_W), A
-    XOR     A    : OUT (PSG_DAT_W), A
+    LD      A, 9 : OUT (PSG_REG), A
+    XOR     A    : OUT (PSG_REG15), A
 
 .mixer:
     ; R7: combine SFX A, B and BGM C
@@ -197,8 +197,8 @@ UPDATE_SOUND:
     ; Buzzer mode: channel C's tone mixer stays OFF (bit 2 = 1).
     ; The sound comes purely from envelope amplitude modulation —
     ; this is the classic 'buzzer bass' technique.
-    LD      A, 7 : OUT (PSG_REG_W), A
-    LD      A, D : OUT (PSG_DAT_W), A
+    LD      A, 7 : OUT (PSG_REG), A
+    LD      A, D : OUT (PSG_REG15), A
     RET
 
 ; =============================================================================

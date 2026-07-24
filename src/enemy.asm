@@ -14,7 +14,6 @@
 ;   IX+6: half-pixel accumulator (0/1) — updated by GET_MOVE_DELTA, don't set directly
 ;   IX+7: shooting cooldown counter (frames remaining, see ENEMY_SHOOT_ROLL)
 
-ENEMY_NONE      EQU 0
 ENEMY_ROBOT     EQU 1
 ENEMY_TANK      EQU 2
 ENEMY_GHOST     EQU 3

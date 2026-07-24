@@ -29,15 +29,14 @@
 ; no separate fix is (still) needed.
 ; =============================================================================
 
-WIZARD_SPRITE_BASE    EQU 26      ; sprite 26 (front, highlight) + 27 (back, base)
-WIZARD_BULLET_SPRITE  EQU 28      ; its own bullet sprite
+WIZARD_SPRITE_BASE    EQU 26      ; sprite 26 (front, highlight) + 27 (back, base); 28 = its own bullet
 WIZARD_TOTAL_SPRITES  EQU 3       ; 26,27,28 — for the hide-all loop
 
 ; Speed of the Wizard and its bullet: see CUR_WIZARD_SPEED_X2 / CUR_WIZARD_BULLET_SPEED
 ; (enemy.asm) — per-round now, no longer fixed constants.
 WIZARD_COLOR_A        EQU 13      ; back layer (body): magenta
 WIZARD_COLOR_B        EQU 9       ; front layer (highlight): pink/red
-WIZARD_TELEPORT_INTERVAL EQU 180  ; frames (~3s at 60fps) — tunable
+WIZARD_TELEPORT_INTERVAL EQU 120  ; frames (~3s at 60fps) — tunable
 
 ; The WIZARD_PATS data has 16 groups (4 bytes/group = 16x16 pattern):
 ; groups 0-7 = color 9 (front layer), order Right1,Right2,Left1,Left2,

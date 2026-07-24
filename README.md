@@ -134,6 +134,7 @@ therefore multiples of 4.
 | C0A7          | ROUND            | Round number (1, 2, 3…), drives the speed table |
 | C0A8-C0AC     | CUR_RT_SPEED_X2 … CUR_WIZARD_BULLET_SPEED | Current round's speeds, recomputed by `APPLY_ROUND_SPEEDS` |
 | C0AD          | MOVE_DELTA       | This frame's pixel count, from the half-pixel accumulator |
+| C0AE          | TITLE_SEL        | Title screen mode selection (0=1P, 1=2P), used only before GAME_MODE is set |
 | C100-C3FF     | NAVMAP           | Junction point direction bitmap (768 bytes) |
 
 ### MSX/TMS9918A gotchas learned along the way

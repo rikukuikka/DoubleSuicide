@@ -6,7 +6,8 @@
 VDP_DATA    EQU 0x98
 VDP_REG     EQU 0x99
 
-; PSG ports (joystick)
+; PSG ports — register select / data write / data read.
+; Shared by input.asm (joystick, via register 14/15) and sound.asm (audio registers).
 PSG_REG     EQU 0xA0
 PSG_REG15   EQU 0xA1
 PSG_READ    EQU 0xA2
@@ -37,7 +38,6 @@ IN_FIRE     EQU 0x10
 
 ; Game speed
 SPEED       EQU 2
-ENEMY_SPEED EQU 1
 
 ; Sprite colors
 P1_COLOR    EQU 4   ; blue
@@ -75,9 +75,6 @@ FRAME_CTR   EQU 0xC00D      ; frame counter for animations
 LEVEL       EQU 0xC00E      ; level number (1+)
 WAVE_TIMER  EQU 0xC00F      ; delay between levels
 
-; Free RAM addresses
-; 0xC00D - 0xC00F free
-
 ; Portal row Y coordinates — computed from maze data
 ; Rows 10-13 are open: Y = 80-111
 PORTAL_Y_MIN    EQU 80
@@ -111,7 +108,7 @@ EXPL_COLOR2     EQU 9           ; pink fade-out
 
 ; Radar — in the middle of the HUD, 4x3-tile frame (32x24px), contents as sprites
 ; The border is fixed nametable tiles (DIGIT_PATS, hud.asm):
-;   row 21 columns 14-17 = RADAR_BORDER_TOP, columns 13/18 = *_WALL versions
+;   row 21 columns 14-17 = RADAR_BORDER_TOP (columns 13/18 are plain wall tiles)
 ;   row 22-23 columns 13/18 = RADAR_BORDER_L/R
 ;   row 23 columns 14-17 = RADAR_BORDER_BOTTOM
 ; Enemy positions are drawn by DRAW_RADAR (enemy.asm) using sprites
@@ -121,8 +118,6 @@ RADAR_BORDER_TOP    EQU 41      ; top edge (row 21, columns 14-17)
 RADAR_BORDER_BOTTOM EQU 42      ; bottom edge (row 23, columns 14-17)
 RADAR_BORDER_R      EQU 43      ; right edge (rows 22-23)
 RADAR_BORDER_L      EQU 44      ; left edge (rows 22-23)
-RADAR_BORDER_L_WALL EQU 45      ; left edge at the wall (row 21)
-RADAR_BORDER_R_WALL EQU 46      ; right edge at the wall (row 21)
 
 RADAR_SPRITE_BASE   EQU 20      ; sprites 20-25 (6 total, free)
 RADAR_DOT_PAT       EQU 72      ; small dot pattern (tank uses 64-71, see enemy.asm)

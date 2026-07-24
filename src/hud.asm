@@ -68,8 +68,6 @@ DIGIT_PATS:
     DB $00,$00,$00,$00,$00,$00,$00,$FF ; Bottom edge
     DB $80,$80,$80,$80,$80,$80,$80,$80 ; Right edge
     DB $01,$01,$01,$01,$01,$01,$01,$01 ; Left edge
-    DB $FF,$FF,$FF,$01,$EF,$EF,$EF,$01 ; Left edge at the wall
-    DB $FE,$FE,$FE,$80,$EF,$EF,$EF,$80 ; Right edge at the wall
 
 
 DIGIT_PATS_END:
@@ -107,10 +105,10 @@ INIT_HUD:
     LD      HL, 0x2800 + 16 : CALL LOAD_HUD_COLORS
     LD      HL, 0x3000 + 16 : CALL LOAD_HUD_COLORS
     ; Color of the radar's border tiles (blue on black) — bank 2 only
-    ; Tiles 41-46: borders (6 tiles, all rows blue). The radar's contents
+    ; Tiles 41-44: borders (4 tiles, all rows blue). The radar's contents
     ; (enemy positions) are drawn by DRAW_RADAR using sprites, not tiles.
     LD      HL, 0x3000 + 41*8 : CALL VDP_SETW
-    LD      B, 6*8 : LD A, 0x41
+    LD      B, 4*8 : LD A, 0x41
 .rc1: OUT   (VDP_DATA), A : DJNZ .rc1
     ; Reset the score
     XOR     A
@@ -171,21 +169,15 @@ DRAW_HUD:
     LD      B, 2
     LD      A, OVI_TILE
 .ds1: OUT    (VDP_DATA), A : DJNZ .ds1
-    ; Tile 3-12: wall (10x)
+    ; Tile 3-13: wall (11x — includes the radar's side edges, drawn as plain wall here)
     LD      B, 11
     LD      A, 1
 .ws1: OUT   (VDP_DATA), A : DJNZ .ws1
-    ; Tile 13: radar's left edge at the wall
- ;   CALL    .vdp_dly
-  ;  LD      A, RADAR_BORDER_L_WALL : OUT (VDP_DATA), A
     ; Tile 14-17: radar's top edge (fixed, contents drawn as sprites)
     CALL    .vdp_dly
     LD      B, 4 : LD A, RADAR_BORDER_TOP
 .rtop21: OUT (VDP_DATA), A : DJNZ .rtop21
-    ; Tile 18: radar's right edge at the wall
- ;   CALL    .vdp_dly
- ;   LD      A, RADAR_BORDER_R_WALL : OUT (VDP_DATA), A
-    ; Tile 19-28: wall (10x)
+    ; Tile 18-28: wall (11x)
     CALL    .vdp_dly
     LD      B, 11
     LD      A, 1

@@ -5,7 +5,9 @@
 ; Tile indices: 0=blank, 2-11=digits, 12=cursor, 14-39=letters A-Z
 
 ; Selection stored in RAM (0=1P, 1=2P)
-TITLE_SEL   EQU 0xC07A
+; Own dedicated byte in the free RAM after MOVE_DELTA (enemy.asm) and before
+; NAVMAP (0xC100) — must NOT overlap EXPLOSIONS (0xC07A) or any other RAM var.
+TITLE_SEL   EQU 0xC0AE
 
 ; =============================================================================
 ; TITLE_SCREEN — show the title screen, wait for the selection
