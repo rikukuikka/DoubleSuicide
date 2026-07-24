@@ -176,6 +176,7 @@ SPAWN_WIZARD:
     LD      (IX+4), 1
     LD      A, (CUR_WIZARD_SPEED_X2) : LD (IX+5), A
     LD      (IX+6), 0                   ; puolipikselikertymä nollataan
+    LD      (IX+7), 0                   ; ampumisjäähdytys nollataan
     LD      A, WIZARD_TELEPORT_INTERVAL : LD (WIZARD_TELEPORT_TIMER), A
     RET
 
@@ -255,7 +256,7 @@ WIZARD_TRY_SHOOT:
 
 .fire:
     LD      A, (IX+2) : CP D : JR NZ, .done   ; ammu vain suuntaan jota kohti liikkuu
-    CALL    RAND : AND 1 : JR NZ, .done        ; 50% todennäköisyys
+    CALL    ENEMY_SHOOT_ROLL : JR NZ, .done    ; jäähdytys+50% (Z=ammu)
 
     LD      HL, WIZARD_BULLET
     LD      A, (IX+0) : LD (HL), A : INC HL

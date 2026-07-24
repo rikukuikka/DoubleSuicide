@@ -28,6 +28,10 @@ RAND_SEED       EQU 0xC040      ; 2 tavua
 ; Vähimmäisetäisyys pelaajasta spawnissa/teleportissa (PICK_SPAWN_POS), px
 SPAWN_MIN_PLAYER_DIST EQU 50
 
+; Ampumisjäähdytys: monta framea vihollisen (Robotti/Tankki/Wizard) täytyy
+; odottaa yhden arvonnan jälkeen ennen seuraavaa (ks. ENEMY_SHOOT_ROLL)
+ENEMY_SHOOT_COOLDOWN EQU 10
+
 ROBOT_COLOR     EQU 10          ; keltainen
 TANK_COLOR      EQU 13          ; magenta
 GHOST_COLOR     EQU 15          ; valkoinen
@@ -47,7 +51,7 @@ GHOST_SIGHT_TOL     EQU 16 + GHOST_SIGHT_BUFFER
 ; joten liike käyttää GET_MOVE_DELTA:a puolipikselitarkkuuteen (ks. alempana).
 ; Kaavat (base = BASE_X2/2):
 ;   Robotti/Tankki nopeus        = base        (speed_x2 = BASE_X2)
-;   Haamu nopeus                 = 2*base+1     (speed_x2 = 2*BASE_X2+2)
+;   Haamu nopeus                 = 2*base       (speed_x2 = 2*BASE_X2, sama kuin Wizard)
 ;   Wizard nopeus                = 2*base       (speed_x2 = 2*BASE_X2)
 ;   Robotin/Tankin ammusnopeus   = 2*base       (kokonaisluku aina, ei kertymää)
 ;   Wizardin ammusnopeus         = 2*base+1     (kokonaisluku aina, ei kertymää)
@@ -86,7 +90,7 @@ APPLY_ROUND_SPEEDS:
 
     ADD     A, A                        ; A = 2*BASE_X2
     LD      (CUR_WIZARD_SPEED_X2), A    ; Wizard: speed_x2 = 2*BASE_X2
-    LD      (CUR_GHOST_SPEED_X2), A     ; Haamu: speed_x2 = 2*BASE_X2+2
+    LD      (CUR_GHOST_SPEED_X2), A     ; Haamu: speed_x2 = 2*BASE_X2 (sama kuin Wizard)
 
     LD      A, B                        ; A = BASE_X2
     LD      (CUR_BULLET_SPEED), A       ; Robotin/Tankin ammus = BASE_X2
@@ -108,6 +112,24 @@ GET_MOVE_DELTA:
     LD      (MOVE_DELTA), A
     LD      A, 0 : ADC A, 0
     LD      (IX+6), A
+    RET
+
+; =============================================================================
+; ENEMY_SHOOT_ROLL — jäähdytys + 50% arvonta ampumispäätökselle. Yhteinen
+; Robotille, Tankille ja Wizardille (WIZARD_TRY_SHOOT, boss.asm) — kutsutaan
+; vasta kun kutsuja on jo varmistanut linjassa+suunta-ehdot.
+; Sisääntulo: IX = vihollisdata (IX+7 = jäähdytyslaskuri, framea jäljellä)
+; Ulostulo: Z=1 → ammu, Z=0 (NZ) → ei ammu (jäähdytyksessä tai hävisi arvonnan)
+; Tuhoaa: A
+; =============================================================================
+ENEMY_SHOOT_ROLL:
+    LD      A, (IX+7) : OR A : JR Z, .roll
+    DEC     A : LD (IX+7), A
+    OR      0xFF                 ; pakota NZ (jäähdytyksessä, ei ammuta)
+    RET
+.roll:
+    LD      A, ENEMY_SHOOT_COOLDOWN : LD (IX+7), A
+    CALL    RAND : AND 1          ; Z=1 → ammu (50%)
     RET
 
 ROBOT_PATS:
@@ -350,6 +372,7 @@ SPAWN_ROBOT:
     LD      (IX+4), 1
     LD      A, (CUR_RT_SPEED_X2) : LD (IX+5), A
     LD      (IX+6), 0                   ; puolipikselikertymä nollataan
+    LD      (IX+7), 0                   ; ampumisjäähdytys nollataan
     RET
 
 ; SPAWN_TANK — luo Tankki IX-osoitteeseen NAVMAP-pisteiden kautta
@@ -360,6 +383,7 @@ SPAWN_TANK:
     LD      (IX+4), 1
     LD      A, (CUR_RT_SPEED_X2) : LD (IX+5), A
     LD      (IX+6), 0
+    LD      (IX+7), 0
     RET
 
 ; SPAWN_GHOST — luo Haamu IX-osoitteeseen NAVMAP-pisteiden kautta
@@ -793,7 +817,7 @@ TANK_TRY_SHOOT:
     NEG
 .tts_ry:
     CP      4 : JR NC, .tts_done
-    CALL    RAND : AND 1 : JR NZ, .tts_done
+    CALL    ENEMY_SHOOT_ROLL : JR NZ, .tts_done  ; jäähdytys+50% (Z=ammu)
     LD      E, DIR_LEFT : LD D, DIR_RIGHT
     JR      .tts_fire
 
@@ -804,7 +828,7 @@ TANK_TRY_SHOOT:
     NEG
 .tts_cx:
     CP      4 : JR NC, .tts_done
-    CALL    RAND : AND 1 : JR NZ, .tts_done
+    CALL    ENEMY_SHOOT_ROLL : JR NZ, .tts_done  ; jäähdytys+50% (Z=ammu)
     LD      E, DIR_UP : LD D, DIR_DOWN
 
 .tts_fire:
@@ -1054,7 +1078,7 @@ ENEMY_TRY_SHOOT:
 
 .fire:
     LD      A, (IX+2) : CP D : JR NZ, .done  ; ammu vain jos liikkuu pelaajaa kohti
-    CALL    RAND : AND 1 : JR NZ, .done       ; 50% todennäköisyys
+    CALL    ENEMY_SHOOT_ROLL : JR NZ, .done  ; jäähdytys+50% (Z=ammu)
 
     LD      A, (IX+0) : LD (IY+0), A       ; X
     LD      A, (IX+1) : LD (IY+1), A       ; Y
@@ -1121,6 +1145,8 @@ UPDATE_ENEMY_BULLET:
 
 ; CHECK_ENEMY_BULLET_PLAYER_HIT — tarkista osuuko vihollisammus pelaajaan
 ; Sisääntulo: IX = bullet slot
+; Keskitetyt hitboxit: ammus 4x4 (puolikas 2) + pelaaja 6x6 (puolikas 3)
+; = kynnys 5 (ks. bullet.asm:n CHECK_BULLET_HIT samasta johtamisesta)
 CHECK_ENEMY_BULLET_PLAYER_HIT:
     PUSH    BC
     PUSH    DE
@@ -1133,12 +1159,12 @@ CHECK_ENEMY_BULLET_PLAYER_HIT:
     JP      P, .p1x
     NEG
 .p1x:
-    CP      15 : JR NC, .chk_p2
+    CP      5 : JR NC, .chk_p2
     LD      A, (P1_Y) : SUB E
     JP      P, .p1y
     NEG
 .p1y:
-    CP      15 : JR NC, .chk_p2
+    CP      5 : JR NC, .chk_p2
     LD      (IX+3), 0
     LD      A, (P1_LIVES) : DEC A : LD (P1_LIVES), A
     LD      A, 1 : LD (HUD_DIRTY), A
@@ -1153,12 +1179,12 @@ CHECK_ENEMY_BULLET_PLAYER_HIT:
     JP      P, .p2x
     NEG
 .p2x:
-    CP      15 : JR NC, .ebph_done
+    CP      5 : JR NC, .ebph_done
     LD      A, (P2_Y) : SUB E
     JP      P, .p2y
     NEG
 .p2y:
-    CP      15 : JR NC, .ebph_done
+    CP      5 : JR NC, .ebph_done
     LD      (IX+3), 0
     LD      A, (P2_LIVES) : DEC A : LD (P2_LIVES), A
     LD      A, 1 : LD (HUD_DIRTY), A

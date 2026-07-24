@@ -194,19 +194,21 @@ CHECK_BULLET_HIT:
     POP     HL
     OR      A : JR Z, .enext
 
-    ; Etäisyystarkistus — osuma jos < 8px
+    ; Etäisyystarkistus — keskitetyt hitboxit: ammus 4x4 (puolikas 2) +
+    ; vihollinen 6x6 (puolikas 3) = kynnys 5 (ankkuripisteiden erotukselle,
+    ; sprite-offsetit kumoutuvat koska molemmat 16x16 vasen-yläkulmasta)
     LD      A, (HL) : SUB D   ; vihollinen X - ammus X
     JP      P, .ex_pos
     NEG
 .ex_pos:
-    CP      15 : JR NC, .enext
+    CP      5 : JR NC, .enext
 
     PUSH    HL : INC HL : LD A, (HL) : POP HL
     SUB     E                 ; vihollinen Y - ammus Y
     JP      P, .ey_pos
     NEG
 .ey_pos:
-    CP      15 : JR NC, .enext
+    CP      5 : JR NC, .enext
 
     ; OSUMA — deaktivoi vihollinen
     PUSH    HL

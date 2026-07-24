@@ -347,6 +347,8 @@ DRAW_PLAYERS:
 
 ; =============================================================================
 ; CHECK_PLAYER_DEATH — tarkista osuuko vihollinen pelaajaan
+; Keskitetyt hitboxit: pelaaja 6x6 + vihollinen 6x6 (kumpikin puolikas 3)
+; = kynnys 6 (ks. bullet.asm:n CHECK_BULLET_HIT samasta johtamisesta)
 ; =============================================================================
 CHECK_PLAYER_DEATH:
     LD      IX, ENEMIES
@@ -362,12 +364,12 @@ CHECK_PLAYER_DEATH:
     LD      A, (P1_X) : SUB (IX+0)
     JP      P, .p1xp
     NEG
-.p1xp: CP      15 : JR NC, .skip_p1
+.p1xp: CP      6 : JR NC, .skip_p1
     ; Etäisyys Y
     LD      A, (P1_Y) : SUB (IX+1)
     JP      P, .p1yp
     NEG
-.p1yp: CP      15 : JR NC, .skip_p1
+.p1yp: CP      6 : JR NC, .skip_p1
     ; OSUMA P1
     LD      A, (P1_LIVES) : DEC A : LD (P1_LIVES), A
     LD      A, 1 : LD (HUD_DIRTY), A
@@ -382,11 +384,11 @@ CHECK_PLAYER_DEATH:
     LD      A, (P2_X) : SUB (IX+0)
     JP      P, .p2xp
     NEG
-.p2xp: CP      15 : JR NC, .next
+.p2xp: CP      6 : JR NC, .next
     LD      A, (P2_Y) : SUB (IX+1)
     JP      P, .p2yp
     NEG
-.p2yp: CP      15 : JR NC, .next
+.p2yp: CP      6 : JR NC, .next
     ; OSUMA P2
     LD      A, (P2_LIVES) : DEC A : LD (P2_LIVES), A
     LD      A, 1 : LD (HUD_DIRTY), A
