@@ -47,8 +47,10 @@ INIT:
     LD      HL, 0x2800 + 16 : CALL LOAD_HUD_COLORS
     LD      HL, 0x3000 + 16 : CALL LOAD_HUD_COLORS
     CALL    INIT_PLAYERS
-    CALL    INIT_BOSS              ; nollaa BOSS_ACTIVE, lataa Wizard-dummypattern
-    LD      A, 1 : LD (LEVEL), A   ; TESTI: suoraan boss-tasolle (WAVE_TABLE taso 6) — vaihda 1:ksi normaaliin peliin
+    CALL    INIT_BOSS              ; nollaa BOSS_ACTIVE, lataa Wizardin patternit
+    LD      A, 1 : LD (LEVEL), A
+    LD      A, 1 : LD (ROUND), A   ; kierros 1 (hitain nopeustaso)
+    CALL    APPLY_ROUND_SPEEDS     ; laske CUR_*-nopeudet ennen vihollisten spawnia
     CALL    INIT_ENEMIES
     CALL    INIT_BULLETS
     CALL    INIT_EXPLOSIONS
@@ -122,8 +124,16 @@ MAINLOOP:
     ; Tarkista onko aalto valmis
     CALL    CHECK_WAVE_COMPLETE
     JP      NZ, MAINLOOP
-    ; Kaikki viholliset tuhottu — seuraava taso
+    ; Kaikki viholliset tuhottu
+    LD      A, (BOSS_ACTIVE) : OR A : JR Z, .next_level
+    ; Wizard kaatui — uusi, nopeampi kierros; LEVEL takaisin 1:een
+    LD      A, (ROUND) : INC A : LD (ROUND), A
+    CALL    APPLY_ROUND_SPEEDS
+    LD      A, 1 : LD (LEVEL), A
+    JR      .level_set
+.next_level:
     LD      A, (LEVEL) : INC A : LD (LEVEL), A
+.level_set:
     LD      A, 90 : LD (WAVE_TIMER), A    ; 1.5s viive
     JP      MAINLOOP
 

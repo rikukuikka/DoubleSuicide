@@ -94,7 +94,7 @@ NAVMAP          EQU 0xC100      ; 32*24=768 tavua (0xC100-0xC3FF)
 ENEMY_BULLETS       EQU 0xC081      ; 6*4=24 tavua (0xC081-0xC098)
 ENEMY_BULLET_SIZE   EQU 4           ; X, Y, dir, active
 ENEMY_BULLET_COLOR  EQU 8           ; punainen
-ENEMY_BULLET_SPEED  EQU 2           ; puolet pelaajan luodin nopeudesta
+; Nopeus: ks. CUR_BULLET_SPEED (enemy.asm) — kierroskohtainen, ei enää kiinteä
 
 ; Tankin ammukset (2 suuntaa yhtä aikaa)
 TANK_BULLETS        EQU 0xC099      ; 2*4=8 tavua (0xC099-0xC0A0)

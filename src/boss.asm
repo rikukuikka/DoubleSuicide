@@ -33,8 +33,8 @@ WIZARD_SPRITE_BASE    EQU 26      ; sprite 26 (edessä, korostus) + 27 (takana, 
 WIZARD_BULLET_SPRITE  EQU 28      ; oma ammussprite
 WIZARD_TOTAL_SPRITES  EQU 3       ; 26,27,28 — hide_all-silmukalle
 
-WIZARD_SPEED          EQU 2
-WIZARD_BULLET_SPEED   EQU 3       ; nopeampi kuin Robotin/Tankin ammukset (ENEMY_BULLET_SPEED)
+; Wizardin ja sen ammuksen nopeus: ks. CUR_WIZARD_SPEED_X2 / CUR_WIZARD_BULLET_SPEED
+; (enemy.asm) — kierroskohtaisia, ei enää kiinteitä vakioita.
 WIZARD_COLOR_A        EQU 13      ; takakerros (runko): magenta
 WIZARD_COLOR_B        EQU 9       ; etukerros (korostus): vaaleanpunainen/-punainen
 WIZARD_TELEPORT_INTERVAL EQU 180  ; framea (~3s 60fps) — säädettävissä
@@ -174,7 +174,8 @@ SPAWN_WIZARD:
     LD      (IX+2), DIR_RIGHT
     LD      (IX+3), ENEMY_WIZARD
     LD      (IX+4), 1
-    LD      (IX+5), WIZARD_SPEED
+    LD      A, (CUR_WIZARD_SPEED_X2) : LD (IX+5), A
+    LD      (IX+6), 0                   ; puolipikselikertymä nollataan
     LD      A, WIZARD_TELEPORT_INTERVAL : LD (WIZARD_TELEPORT_TIMER), A
     RET
 
@@ -267,32 +268,33 @@ WIZARD_TRY_SHOOT:
 
 ; =============================================================================
 ; UPDATE_WIZARD_BULLET — liikuta Wizardin ammus omalla nopeudellaan
-; (kopio UPDATE_ENEMY_BULLET:sta WIZARD_BULLET_SPEED:llä — ei voi käyttää
-; ENEMY_BULLET_SPEED:iä sellaisenaan, koska se on yhteinen kaikille
-; Robotin/Tankin ammuksille)
+; (kopio UPDATE_ENEMY_BULLET:sta CUR_WIZARD_BULLET_SPEED:llä — ei voi käyttää
+; CUR_BULLET_SPEED:iä sellaisenaan, koska se on yhteinen Robotin/Tankin
+; ammuksille ja Wizardin kaava on eri, ks. enemy.asm)
 ; =============================================================================
 UPDATE_WIZARD_BULLET:
     LD      IX, WIZARD_BULLET
     LD      A, (IX+3) : OR A : RET Z        ; ei aktiivinen
 
+    LD      A, (CUR_WIZARD_BULLET_SPEED) : LD B, A  ; B = tämän hetken nopeus
     LD      A, (IX+2)                        ; suunta
     CP      DIR_UP : JR NZ, .wbu_nd
-    LD      A, (IX+1) : SUB WIZARD_BULLET_SPEED
+    LD      A, (IX+1) : SUB B
     JR      C, .wbu_deact
     CP      8 : JR C, .wbu_deact
     LD      (IX+1), A : JR .wbu_wall
 .wbu_nd:
     CP      DIR_DOWN : JR NZ, .wbu_nl
-    LD      A, (IX+1) : ADD A, WIZARD_BULLET_SPEED
+    LD      A, (IX+1) : ADD A, B
     CP      153 : JR NC, .wbu_deact
     LD      (IX+1), A : JR .wbu_wall
 .wbu_nl:
     CP      DIR_LEFT : JR NZ, .wbu_nr
-    LD      A, (IX+0) : SUB WIZARD_BULLET_SPEED
+    LD      A, (IX+0) : SUB B
     JR      C, .wbu_deact
     LD      (IX+0), A : JR .wbu_wall
 .wbu_nr:
-    LD      A, (IX+0) : ADD A, WIZARD_BULLET_SPEED
+    LD      A, (IX+0) : ADD A, B
     CP      241 : JR NC, .wbu_deact
     LD      (IX+0), A
 .wbu_wall:

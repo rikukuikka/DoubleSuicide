@@ -8,8 +8,11 @@
 ;   IX+2: suunta (DIR_*)
 ;   IX+3: tyyppi (ENEMY_ROBOT jne.)
 ;   IX+4: aktiivinen (1=kyllä)
-;   IX+5: nopeus (px/frame) — asetetaan SPAWN_*:ssä, liikelogiikka lukee tästä
-;   IX+6-7: varattu
+;   IX+5: nopeus*2 (puolipikseliä/frame) — asetetaan SPAWN_*:ssä kierroksen
+;         CUR_*_SPEED_X2-arvosta. GET_MOVE_DELTA muuntaa tämän ja IX+6:n
+;         (kertymä) todelliseksi pikselimääräksi tälle framelle.
+;   IX+6: puolipikselikertymä (0/1) — GET_MOVE_DELTA päivittää, älä aseta itse
+;   IX+7: varattu
 
 ENEMY_NONE      EQU 0
 ENEMY_ROBOT     EQU 1
@@ -28,7 +31,6 @@ SPAWN_MIN_PLAYER_DIST EQU 50
 ROBOT_COLOR     EQU 10          ; keltainen
 TANK_COLOR      EQU 13          ; magenta
 GHOST_COLOR     EQU 15          ; valkoinen
-GHOST_SPEED     EQU 2           ; nopeampi kuin robotti/tankki (ENEMY_SPEED=1)
 GHOST_PAT_BASE  EQU 76          ; RADAR_DOT_PAT(72) varaa 4 patternia (72-75), 32 patternia: 76-107
 ; Haamun näkyvyyspuskuri: kuinka monta pikseliä pelaajan 16x16-spriten
 ; reunan ulkopuolelle näkyvyys ulottuu. Kynnys = 16 (sprite) + puskuri,
@@ -36,6 +38,77 @@ GHOST_PAT_BASE  EQU 76          ; RADAR_DOT_PAT(72) varaa 4 patternia (72-75), 3
 ; molemmin puolin (ks. GHOST_VISIBLE).
 GHOST_SIGHT_BUFFER  EQU 10
 GHOST_SIGHT_TOL     EQU 16 + GHOST_SIGHT_BUFFER
+
+; =============================================================================
+; KIERROSJÄRJESTELMÄ — vihollisten/ammusten nopeus kasvaa aina kun Wizard
+; kaadetaan (LEVEL palaa takaisin 1:een, main.asm). Yksi arvo (BASE_X2 =
+; 2*perusnopeus) ohjaa kaikkia — muuta vain BASE_X2_TABLE:a säätääksesi.
+; Perusnopeus (base) on Robotin/Tankin oma nopeus, voi olla 0.5 (BASE_X2=1),
+; joten liike käyttää GET_MOVE_DELTA:a puolipikselitarkkuuteen (ks. alempana).
+; Kaavat (base = BASE_X2/2):
+;   Robotti/Tankki nopeus        = base        (speed_x2 = BASE_X2)
+;   Haamu nopeus                 = 2*base+1     (speed_x2 = 2*BASE_X2+2)
+;   Wizard nopeus                = 2*base       (speed_x2 = 2*BASE_X2)
+;   Robotin/Tankin ammusnopeus   = 2*base       (kokonaisluku aina, ei kertymää)
+;   Wizardin ammusnopeus         = 2*base+1     (kokonaisluku aina, ei kertymää)
+; =============================================================================
+BASE_X2_TABLE:
+    DB 1    ; kierros 1: base=0.5
+    DB 2    ; kierros 2: base=1
+    DB 4    ; kierros 3+: base=2 (tasaantuu tähän)
+BASE_X2_TABLE_END:
+MAX_BASE_ENTRIES EQU BASE_X2_TABLE_END - BASE_X2_TABLE
+
+; RAM: kierrosnumero + kierroksen alussa lasketut nopeudet (APPLY_ROUND_SPEEDS)
+ROUND                   EQU 0xC0A7  ; 1, 2, 3...
+CUR_RT_SPEED_X2         EQU 0xC0A8  ; Robotti & Tankki, speed_x2 (IX+5:een)
+CUR_GHOST_SPEED_X2      EQU 0xC0A9  ; Haamu, speed_x2 (IX+5:een)
+CUR_WIZARD_SPEED_X2     EQU 0xC0AA  ; Wizard, speed_x2 (IX+5:een, boss.asm)
+CUR_BULLET_SPEED        EQU 0xC0AB  ; Robotin/Tankin ammusnopeus (kokonaisluku)
+CUR_WIZARD_BULLET_SPEED EQU 0xC0AC  ; Wizardin ammusnopeus (kokonaisluku, boss.asm)
+MOVE_DELTA              EQU 0xC0AD  ; GET_MOVE_DELTA:in laskema pikselimäärä/frame
+
+; =============================================================================
+; APPLY_ROUND_SPEEDS — laskee CUR_*-nopeudet (ROUND):sta. Kutsutaan pelin
+; alussa ja aina kun uusi kierros alkaa (main.asm, Wizardin kuoltua).
+; =============================================================================
+APPLY_ROUND_SPEEDS:
+    LD      A, (ROUND) : DEC A          ; 0-indeksoitu
+    CP      MAX_BASE_ENTRIES : JR C, .ok
+    LD      A, MAX_BASE_ENTRIES - 1     ; leikkaa viimeiseen (tasaantunut) arvoon
+.ok:
+    LD      HL, BASE_X2_TABLE : ADD A, L : LD L, A
+    LD      A, H : ADC A, 0 : LD H, A
+    LD      A, (HL)                     ; A = BASE_X2
+
+    LD      (CUR_RT_SPEED_X2), A        ; Robotti/Tankki: speed_x2 = BASE_X2
+    LD      B, A                        ; B = BASE_X2 (säilytä)
+
+    ADD     A, A                        ; A = 2*BASE_X2
+    LD      (CUR_WIZARD_SPEED_X2), A    ; Wizard: speed_x2 = 2*BASE_X2
+    LD      (CUR_GHOST_SPEED_X2), A     ; Haamu: speed_x2 = 2*BASE_X2+2
+
+    LD      A, B                        ; A = BASE_X2
+    LD      (CUR_BULLET_SPEED), A       ; Robotin/Tankin ammus = BASE_X2
+    INC     A
+    LD      (CUR_WIZARD_BULLET_SPEED), A ; Wizardin ammus = BASE_X2+1
+    RET
+
+; =============================================================================
+; GET_MOVE_DELTA — laske tämän framen liikemäärä puolipikselikertymän avulla.
+; Sisääntulo: IX = vihollisdata (IX+5=nopeus*2, IX+6=kertymä 0/1)
+; Ulostulo: (MOVE_DELTA) = pikselimäärä tälle framelle. Päivittää (IX+6):n.
+; Kutsu TÄSMÄLLEEN KERRAN per UPDATE_ROBOT/UPDATE_CHASER-kutsu (funktion
+; alussa) — RANDOM_TURN yms. tail-callit lukevat saman jo lasketun arvon
+; eivätkä kutsu tätä uudelleen, jottei kertymä kulu kahteen kertaan.
+; =============================================================================
+GET_MOVE_DELTA:
+    LD      A, (IX+6) : ADD A, (IX+5)
+    SRL     A                          ; A = pikselit, carry = uusi kertymäbitti
+    LD      (MOVE_DELTA), A
+    LD      A, 0 : ADC A, 0
+    LD      (IX+6), A
+    RET
 
 ROBOT_PATS:
     ; 16x16 Robotti (pattern 8 = offset 64, yksi frame)
@@ -275,7 +348,8 @@ SPAWN_ROBOT:
     CALL    RAND : AND 0x03 : LD (IX+2), A
     LD      (IX+3), ENEMY_ROBOT
     LD      (IX+4), 1
-    LD      (IX+5), ENEMY_SPEED
+    LD      A, (CUR_RT_SPEED_X2) : LD (IX+5), A
+    LD      (IX+6), 0                   ; puolipikselikertymä nollataan
     RET
 
 ; SPAWN_TANK — luo Tankki IX-osoitteeseen NAVMAP-pisteiden kautta
@@ -284,7 +358,8 @@ SPAWN_TANK:
     LD      (IX+2), DIR_RIGHT
     LD      (IX+3), ENEMY_TANK
     LD      (IX+4), 1
-    LD      (IX+5), ENEMY_SPEED
+    LD      A, (CUR_RT_SPEED_X2) : LD (IX+5), A
+    LD      (IX+6), 0
     RET
 
 ; SPAWN_GHOST — luo Haamu IX-osoitteeseen NAVMAP-pisteiden kautta
@@ -293,7 +368,8 @@ SPAWN_GHOST:
     LD      (IX+2), DIR_RIGHT
     LD      (IX+3), ENEMY_GHOST
     LD      (IX+4), 1
-    LD      (IX+5), GHOST_SPEED
+    LD      A, (CUR_GHOST_SPEED_X2) : LD (IX+5), A
+    LD      (IX+6), 0
     RET
 
 ; =============================================================================
@@ -442,7 +518,8 @@ GET_NAVMAP_DIRS:
 
 ; =============================================================================
 ; RANDOM_TURN — seinä edessä: kokeile satunnaisia suuntia (16 yritystä)
-; Asettaa (IX+2) jos vapaa suunta löytyy. Nopeus luetaan (IX+5):stä.
+; Asettaa (IX+2) jos vapaa suunta löytyy. Käyttää (MOVE_DELTA):a — kutsuja
+; (UPDATE_ROBOT/UPDATE_CHASER) on jo laskenut sen GET_MOVE_DELTA:lla.
 ; Yhteinen Robotille ja Chaserille (tankki/haamu). Tuhoaa A, B, C, D, E.
 ; =============================================================================
 RANDOM_TURN:
@@ -452,57 +529,58 @@ RANDOM_TURN:
     CALL    RAND : AND 0x03 : LD D, A
 
     CP      DIR_UP : JR NZ, .tu
-    LD      A, (IX+1) : SUB (IX+5) : CP 8 : JR C, .tbad
+    LD      A, (MOVE_DELTA) : LD C, A : LD A, (IX+1) : SUB C : CP 8 : JR C, .tbad
     LD      E, A : LD B, (IX+0) : LD C, E : CALL IS_WALL : JR NZ, .tbad
     JR      .tok
 .tu:CP      DIR_DOWN : JR NZ, .td
-    LD      A, (IX+1) : ADD A, (IX+5) : CP 153 : JR NC, .tbad
+    LD      A, (MOVE_DELTA) : LD C, A : LD A, (IX+1) : ADD A, C : CP 153 : JR NC, .tbad
     LD      E, A : LD B, (IX+0) : LD A, E : ADD A, 15 : LD C, A : CALL IS_WALL : JR NZ, .tbad
     JR      .tok
 .td:CP      DIR_LEFT : JR NZ, .tl
-    LD      A, (IX+0) : SUB (IX+5) : JR C, .tbad
+    LD      A, (MOVE_DELTA) : LD C, A : LD A, (IX+0) : SUB C : JR C, .tbad
     LD      E, A : LD B, E : LD A, (IX+1) : ADD A, 8 : LD C, A : CALL IS_WALL : JR NZ, .tbad
     JR      .tok
-.tl:LD      A, (IX+0) : ADD A, (IX+5) : CP 241 : JR NC, .tbad
+.tl:LD      A, (MOVE_DELTA) : LD C, A : LD A, (IX+0) : ADD A, C : CP 241 : JR NC, .tbad
     LD      E, A : LD A, E : ADD A, 15 : LD B, A
     LD      A, (IX+1) : ADD A, 8 : LD C, A : CALL IS_WALL : JR NZ, .tbad
 .tok:
     LD      (IX+2), D
     POP     BC : RET
 .tbad:
-    POP     BC : DJNZ .try
+    POP     BC : DEC B : JP NZ, .try   ; DJNZ ei riitä (silmukka >128 tavua)
     RET
 
 ; =============================================================================
-; UPDATE_ROBOT — liikuta yksi Robotti (IX = data), nopeus (IX+5)
+; UPDATE_ROBOT — liikuta yksi Robotti (IX = data), nopeus (IX+5, puolipikseliä)
 ; =============================================================================
 UPDATE_ROBOT:
+    CALL    GET_MOVE_DELTA          ; (MOVE_DELTA) = tämän framen pikselimäärä
     LD      A, (IX+2) : LD D, A     ; D = suunta
 
     ; Kokeile liikkua nykyiseen suuntaan — tukossa → RANDOM_TURN
     CP      DIR_UP : JR NZ, .not_up
-    LD      A, (IX+1) : SUB (IX+5) : CP 8 : JP C, RANDOM_TURN
+    LD      A, (MOVE_DELTA) : LD C, A : LD A, (IX+1) : SUB C : CP 8 : JP C, RANDOM_TURN
     LD      E, A
     LD      B, (IX+0) : LD C, E : CALL IS_WALL : JP NZ, RANDOM_TURN
     LD      A, (IX+0) : ADD A, 15 : LD B, A : LD C, E : CALL IS_WALL : JP NZ, RANDOM_TURN
     LD      (IX+1), E : JP .maybe_turn
 .not_up:
     CP      DIR_DOWN : JR NZ, .not_down
-    LD      A, (IX+1) : ADD A, (IX+5) : CP 153 : JP NC, RANDOM_TURN
+    LD      A, (MOVE_DELTA) : LD C, A : LD A, (IX+1) : ADD A, C : CP 153 : JP NC, RANDOM_TURN
     LD      E, A
     LD      B, (IX+0) : LD A, E : ADD A, 15 : LD C, A : CALL IS_WALL : JP NZ, RANDOM_TURN
     LD      A, (IX+0) : ADD A, 15 : LD B, A : LD A, E : ADD A, 15 : LD C, A : CALL IS_WALL : JP NZ, RANDOM_TURN
     LD      (IX+1), E : JP .maybe_turn
 .not_down:
     CP      DIR_LEFT : JR NZ, .not_left
-    LD      A, (IX+0) : SUB (IX+5) : JP C, RANDOM_TURN
+    LD      A, (MOVE_DELTA) : LD C, A : LD A, (IX+0) : SUB C : JP C, RANDOM_TURN
     LD      E, A
     LD      B, E : LD C, (IX+1) : CALL IS_WALL : JP NZ, RANDOM_TURN
     LD      B, E : LD A, (IX+1) : ADD A, 15 : LD C, A : CALL IS_WALL : JP NZ, RANDOM_TURN
     LD      (IX+0), E : JP .maybe_turn
 .not_left:
     ; DIR_RIGHT
-    LD      A, (IX+0) : ADD A, (IX+5) : CP 241 : JP NC, RANDOM_TURN
+    LD      A, (MOVE_DELTA) : LD C, A : LD A, (IX+0) : ADD A, C : CP 241 : JP NC, RANDOM_TURN
     LD      E, A
     LD      A, E : ADD A, 15 : LD B, A : LD C, (IX+1) : CALL IS_WALL : JP NZ, RANDOM_TURN
     LD      A, E : ADD A, 15 : LD B, A : LD A, (IX+1) : ADD A, 15 : LD C, A : CALL IS_WALL : JP NZ, RANDOM_TURN
@@ -591,35 +669,36 @@ TANK_TOWARD_PLAYER:
     POP     HL : POP DE : RET
 
 ; =============================================================================
-; UPDATE_CHASER — liikuta vihollista pelaajaa kohti (IX = data), nopeus (IX+5)
-; Yhteinen tankille ja haamulle: SPAWN_* asettaa nopeuden (IX+5),
-; muuten logiikka on identtinen. Haamulle ei kutsuta TANK_TRY_SHOOT:ia.
+; UPDATE_CHASER — liikuta vihollista pelaajaa kohti (IX = data)
+; Yhteinen tankille ja haamulle: SPAWN_* asettaa nopeuden*2 (IX+5), muuten
+; logiikka on identtinen. Haamulle ei kutsuta TANK_TRY_SHOOT:ia.
 ; =============================================================================
 UPDATE_CHASER:
+    CALL    GET_MOVE_DELTA          ; (MOVE_DELTA) = tämän framen pikselimäärä
     LD      A, (IX+2) : LD D, A     ; D = suunta
 
     CP      DIR_UP : JR NZ, .tnup
-    LD      A, (IX+1) : SUB (IX+5) : CP 8 : JP C, .tchg
+    LD      A, (MOVE_DELTA) : LD C, A : LD A, (IX+1) : SUB C : CP 8 : JP C, .tchg
     LD      E, A
     LD      B, (IX+0) : LD C, E : CALL IS_WALL : JP NZ, .tchg
     LD      A, (IX+0) : ADD A, 15 : LD B, A : LD C, E : CALL IS_WALL : JP NZ, .tchg
     LD      (IX+1), E : JP .tmt
 .tnup:
     CP      DIR_DOWN : JR NZ, .tndn
-    LD      A, (IX+1) : ADD A, (IX+5) : CP 153 : JP NC, .tchg
+    LD      A, (MOVE_DELTA) : LD C, A : LD A, (IX+1) : ADD A, C : CP 153 : JP NC, .tchg
     LD      E, A
     LD      B, (IX+0) : LD A, E : ADD A, 15 : LD C, A : CALL IS_WALL : JP NZ, .tchg
     LD      A, (IX+0) : ADD A, 15 : LD B, A : LD A, E : ADD A, 15 : LD C, A : CALL IS_WALL : JP NZ, .tchg
     LD      (IX+1), E : JP .tmt
 .tndn:
     CP      DIR_LEFT : JR NZ, .tnlt
-    LD      A, (IX+0) : SUB (IX+5) : JP C, .tchg
+    LD      A, (MOVE_DELTA) : LD C, A : LD A, (IX+0) : SUB C : JP C, .tchg
     LD      E, A
     LD      B, E : LD C, (IX+1) : CALL IS_WALL : JP NZ, .tchg
     LD      B, E : LD A, (IX+1) : ADD A, 15 : LD C, A : CALL IS_WALL : JP NZ, .tchg
     LD      (IX+0), E : JP .tmt
 .tnlt:
-    LD      A, (IX+0) : ADD A, (IX+5) : CP 241 : JP NC, .tchg
+    LD      A, (MOVE_DELTA) : LD C, A : LD A, (IX+0) : ADD A, C : CP 241 : JP NC, .tchg
     LD      E, A
     LD      A, E : ADD A, 15 : LD B, A : LD C, (IX+1) : CALL IS_WALL : JP NZ, .tchg
     LD      A, E : ADD A, 15 : LD B, A : LD A, (IX+1) : ADD A, 15 : LD C, A : CALL IS_WALL : JP NZ, .tchg
@@ -658,27 +737,27 @@ UPDATE_CHASER:
 
     ; Kokeile suuntaa D — tarkista MOLEMMAT kulmat (sama kuin pääliikuntakoodi)
     CP      DIR_UP : JR NZ, .ttu_nd
-    LD      A, (IX+1) : SUB (IX+5) : CP 8 : JP C, RANDOM_TURN
+    LD      A, (MOVE_DELTA) : LD C, A : LD A, (IX+1) : SUB C : CP 8 : JP C, RANDOM_TURN
     LD      E, A
     LD      B, (IX+0) : LD C, E : CALL IS_WALL : JP NZ, RANDOM_TURN
     LD      A, (IX+0) : ADD A, 15 : LD B, A : LD C, E : CALL IS_WALL : JP NZ, RANDOM_TURN
     LD      (IX+2), D : RET
 .ttu_nd:
     CP      DIR_DOWN : JR NZ, .ttu_nl
-    LD      A, (IX+1) : ADD A, (IX+5) : CP 153 : JP NC, RANDOM_TURN
+    LD      A, (MOVE_DELTA) : LD C, A : LD A, (IX+1) : ADD A, C : CP 153 : JP NC, RANDOM_TURN
     LD      E, A
     LD      B, (IX+0) : LD A, E : ADD A, 15 : LD C, A : CALL IS_WALL : JP NZ, RANDOM_TURN
     LD      A, (IX+0) : ADD A, 15 : LD B, A : LD A, E : ADD A, 15 : LD C, A : CALL IS_WALL : JP NZ, RANDOM_TURN
     LD      (IX+2), D : RET
 .ttu_nl:
     CP      DIR_LEFT : JR NZ, .ttu_nr
-    LD      A, (IX+0) : SUB (IX+5) : JP C, RANDOM_TURN
+    LD      A, (MOVE_DELTA) : LD C, A : LD A, (IX+0) : SUB C : JP C, RANDOM_TURN
     LD      E, A
     LD      B, E : LD C, (IX+1) : CALL IS_WALL : JP NZ, RANDOM_TURN
     LD      B, E : LD A, (IX+1) : ADD A, 15 : LD C, A : CALL IS_WALL : JP NZ, RANDOM_TURN
     LD      (IX+2), D : RET
 .ttu_nr:
-    LD      A, (IX+0) : ADD A, (IX+5) : CP 241 : JP NC, RANDOM_TURN
+    LD      A, (MOVE_DELTA) : LD C, A : LD A, (IX+0) : ADD A, C : CP 241 : JP NC, RANDOM_TURN
     LD      E, A
     LD      A, E : ADD A, 15 : LD B, A : LD C, (IX+1) : CALL IS_WALL : JP NZ, RANDOM_TURN
     LD      A, E : ADD A, 15 : LD B, A : LD A, (IX+1) : ADD A, 15 : LD C, A : CALL IS_WALL : JP NZ, RANDOM_TURN
@@ -1003,27 +1082,31 @@ UPDATE_ENEMY_BULLETS:
 
 ; UPDATE_ENEMY_BULLET — liikuta yksi vihollisammus
 ; Sisääntulo: IX = bullet slot (X, Y, dir, active)
+; Nopeus luetaan (CUR_BULLET_SPEED):sta joka kutsulla (kierroskohtainen,
+; ei enää kiinteä vakio) — Z80 ei salli "SUB (nn)" suoraan, joten arvo
+; ladataan ensin B:hen.
 UPDATE_ENEMY_BULLET:
     LD      A, (IX+3) : OR A : RET Z        ; ei aktiivinen
 
+    LD      A, (CUR_BULLET_SPEED) : LD B, A  ; B = tämän hetken ammusnopeus
     LD      A, (IX+2)                        ; suunta
     CP      DIR_UP : JR NZ, .ebu_nd
-    LD      A, (IX+1) : SUB ENEMY_BULLET_SPEED
+    LD      A, (IX+1) : SUB B
     JR      C, .ebu_deact
     CP      8 : JR C, .ebu_deact
     LD      (IX+1), A : JR .ebu_wall
 .ebu_nd:
     CP      DIR_DOWN : JR NZ, .ebu_nl
-    LD      A, (IX+1) : ADD A, ENEMY_BULLET_SPEED
+    LD      A, (IX+1) : ADD A, B
     CP      153 : JR NC, .ebu_deact
     LD      (IX+1), A : JR .ebu_wall
 .ebu_nl:
     CP      DIR_LEFT : JR NZ, .ebu_nr
-    LD      A, (IX+0) : SUB ENEMY_BULLET_SPEED
+    LD      A, (IX+0) : SUB B
     JR      C, .ebu_deact
     LD      (IX+0), A : JR .ebu_wall
 .ebu_nr:
-    LD      A, (IX+0) : ADD A, ENEMY_BULLET_SPEED
+    LD      A, (IX+0) : ADD A, B
     CP      241 : JR NC, .ebu_deact
     LD      (IX+0), A
 .ebu_wall:
