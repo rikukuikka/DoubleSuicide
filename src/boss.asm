@@ -37,6 +37,10 @@ WIZARD_TOTAL_SPRITES  EQU 3       ; 26,27,28 — for the hide-all loop
 WIZARD_COLOR_A        EQU 13      ; back layer (body): magenta
 WIZARD_COLOR_B        EQU 9       ; front layer (highlight): pink/red
 WIZARD_TELEPORT_INTERVAL EQU 120  ; frames (~3s at 60fps) — tunable
+WIZARD_SHOOT_COOLDOWN EQU 4       ; frames — shorter than ENEMY_SHOOT_COOLDOWN
+                                   ; (enemy.asm), and no 50% roll (see
+                                   ; ENEMY_SHOOT_COOLDOWN_ONLY), so the boss
+                                   ; fires every time it's off cooldown
 
 ; The WIZARD_PATS data has 16 groups (4 bytes/group = 16x16 pattern):
 ; groups 0-7 = color 9 (front layer), order Right1,Right2,Left1,Left2,
@@ -256,7 +260,8 @@ WIZARD_TRY_SHOOT:
 
 .fire:
     LD      A, (IX+2) : CP D : JR NZ, .done   ; only fire in the direction it's moving toward
-    CALL    ENEMY_SHOOT_ROLL : JR NZ, .done    ; cooldown+50% (Z=fire)
+    LD      B, WIZARD_SHOOT_COOLDOWN
+    CALL    ENEMY_SHOOT_COOLDOWN_ONLY : JR NZ, .done  ; cooldown only, no roll (Z=fire)
 
     LD      HL, WIZARD_BULLET
     LD      A, (IX+0) : LD (HL), A : INC HL

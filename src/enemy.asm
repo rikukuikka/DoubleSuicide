@@ -119,8 +119,11 @@ GET_MOVE_DELTA:
 ; the Robot, Tank, and Wizard (WIZARD_TRY_SHOOT, boss.asm) — called only
 ; after the caller has already confirmed the in-line+direction conditions.
 ; Input: IX = enemy data (IX+7 = cooldown counter, frames remaining)
+;        B  = cooldown length to apply after this roll (caller decides —
+;             e.g. ENEMY_SHOOT_COOLDOWN for Robot/Tank, WIZARD_SHOOT_COOLDOWN
+;             for the Wizard, boss.asm)
 ; Output: Z=1 → fire, Z=0 (NZ) → don't fire (on cooldown or lost the roll)
-; Clobbers: A
+; Clobbers: A. Preserves B (RAND doesn't touch BC either).
 ; =============================================================================
 ENEMY_SHOOT_ROLL:
     LD      A, (IX+7) : OR A : JR Z, .roll
@@ -128,8 +131,27 @@ ENEMY_SHOOT_ROLL:
     OR      0xFF                 ; force NZ (on cooldown, don't fire)
     RET
 .roll:
-    LD      A, ENEMY_SHOOT_COOLDOWN : LD (IX+7), A
+    LD      A, B : LD (IX+7), A
     CALL    RAND : AND 1          ; Z=1 → fire (50%)
+    RET
+
+; =============================================================================
+; ENEMY_SHOOT_COOLDOWN_ONLY — cooldown only, no 50% roll: fires every time
+; the cooldown allows. Used by the Wizard (WIZARD_TRY_SHOOT, boss.asm) so it
+; shoots more aggressively than the Robot/Tank, which use ENEMY_SHOOT_ROLL.
+; Input: IX = enemy data (IX+7 = cooldown counter), B = cooldown length to
+;        apply once it fires.
+; Output: Z=1 → fire, Z=0 (NZ) → still on cooldown
+; Clobbers: A
+; =============================================================================
+ENEMY_SHOOT_COOLDOWN_ONLY:
+    LD      A, (IX+7) : OR A : JR Z, .go
+    DEC     A : LD (IX+7), A
+    OR      0xFF                 ; force NZ (on cooldown, don't fire)
+    RET
+.go:
+    LD      A, B : LD (IX+7), A
+    XOR     A                   ; force Z (fire)
     RET
 
 ROBOT_PATS:
@@ -799,6 +821,7 @@ TANK_TRY_SHOOT:
     NEG
 .tts_ry:
     CP      4 : JR NC, .tts_done
+    LD      B, ENEMY_SHOOT_COOLDOWN
     CALL    ENEMY_SHOOT_ROLL : JR NZ, .tts_done  ; cooldown+50% (Z=fire)
     LD      E, DIR_LEFT : LD D, DIR_RIGHT
     JR      .tts_fire
@@ -810,6 +833,7 @@ TANK_TRY_SHOOT:
     NEG
 .tts_cx:
     CP      4 : JR NC, .tts_done
+    LD      B, ENEMY_SHOOT_COOLDOWN
     CALL    ENEMY_SHOOT_ROLL : JR NZ, .tts_done  ; cooldown+50% (Z=fire)
     LD      E, DIR_UP : LD D, DIR_DOWN
 
@@ -1063,6 +1087,7 @@ ENEMY_TRY_SHOOT:
 
 .fire:
     LD      A, (IX+2) : CP D : JR NZ, .done  ; only fire in the direction it's moving toward
+    LD      B, ENEMY_SHOOT_COOLDOWN
     CALL    ENEMY_SHOOT_ROLL : JR NZ, .done  ; cooldown+50% (Z=fire)
 
     LD      A, (IX+0) : LD (IY+0), A       ; X

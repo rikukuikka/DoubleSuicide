@@ -48,7 +48,7 @@ INIT:
     LD      HL, 0x3000 + 16 : CALL LOAD_HUD_COLORS
     CALL    INIT_PLAYERS
     CALL    INIT_BOSS              ; reset BOSS_ACTIVE, load the Wizard's patterns
-    LD      A, 1 : LD (LEVEL), A
+    LD      A, 6 : LD (LEVEL), A
     LD      A, 1 : LD (ROUND), A   ; round 1 (slowest speed tier)
     CALL    APPLY_ROUND_SPEEDS     ; compute CUR_* speeds before spawning enemies
     CALL    INIT_ENEMIES
