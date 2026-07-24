@@ -8,11 +8,25 @@ VDP_SETW:
     LD      A, H : OR 0x40 : OUT (VDP_REG), A
     RET
 
+; VDP_DLY — burn ~31 T-states (CALL+NOP+RET) between two successive OUTs to
+; the VRAM data port. Real TMS9918/9928/9929 silicon needs a gap of roughly
+; 29 T-states (~8us) between VRAM writes or a byte can be dropped/corrupted;
+; openMSX (used for all testing so far) is more forgiving about this than
+; real hardware. Touches no registers or flags.
+VDP_DLY:
+    NOP
+    RET
+
 ; HIDE_SPRITE — hide a single sprite; HL = VRAM sprite attribute address
 HIDE_SPRITE:
     CALL    VDP_SETW
     LD      A, 0xD8 : OUT (VDP_DATA), A
-    XOR     A : OUT (VDP_DATA), A : OUT (VDP_DATA), A : OUT (VDP_DATA), A
+    CALL    VDP_DLY
+    XOR     A : OUT (VDP_DATA), A
+    CALL    VDP_DLY
+    OUT     (VDP_DATA), A
+    CALL    VDP_DLY
+    OUT     (VDP_DATA), A
     RET
 
 ; VDP_FILL — fill BC bytes with value A starting at address HL

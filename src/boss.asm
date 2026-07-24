@@ -380,7 +380,12 @@ DRAW_WIZARD:
     LD      B, WIZARD_TOTAL_SPRITES
 .hloop:
     LD      A, 0xD8 : OUT (VDP_DATA), A
-    XOR     A : OUT (VDP_DATA), A : OUT (VDP_DATA), A : OUT (VDP_DATA), A
+    CALL    VDP_DLY
+    XOR     A : OUT (VDP_DATA), A
+    CALL    VDP_DLY
+    OUT     (VDP_DATA), A
+    CALL    VDP_DLY
+    OUT     (VDP_DATA), A
     DJNZ    .hloop
     RET
 

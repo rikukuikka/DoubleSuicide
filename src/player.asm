@@ -94,7 +94,12 @@ INIT_PLAYERS:
     LD      B, 32
 .hs:
     LD      A, 0xD8 : OUT (VDP_DATA), A
-    XOR     A : OUT (VDP_DATA), A : OUT (VDP_DATA), A : OUT (VDP_DATA), A
+    CALL    VDP_DLY
+    XOR     A : OUT (VDP_DATA), A
+    CALL    VDP_DLY
+    OUT     (VDP_DATA), A
+    CALL    VDP_DLY
+    OUT     (VDP_DATA), A
     DJNZ    .hs
 
     CALL    DRAW_P1

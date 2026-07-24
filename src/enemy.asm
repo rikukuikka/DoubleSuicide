@@ -937,7 +937,12 @@ DRAW_ENEMIES:
 
 .hide:
     LD      A, 0xD8 : OUT (VDP_DATA), A
-    XOR     A : OUT (VDP_DATA), A : OUT (VDP_DATA), A : OUT (VDP_DATA), A
+    CALL    VDP_DLY
+    XOR     A : OUT (VDP_DATA), A
+    CALL    VDP_DLY
+    OUT     (VDP_DATA), A
+    CALL    VDP_DLY
+    OUT     (VDP_DATA), A
 
 .next:
     ADD     IX, DE          ; doesn't touch B (the counter) — LD BC,n would have zeroed B
@@ -1019,7 +1024,12 @@ DRAW_RADAR:
     JR      .rnext
 .rhide:
     LD      A, 0xD8 : OUT (VDP_DATA), A
-    XOR     A : OUT (VDP_DATA), A : OUT (VDP_DATA), A : OUT (VDP_DATA), A
+    CALL    VDP_DLY
+    XOR     A : OUT (VDP_DATA), A
+    CALL    VDP_DLY
+    OUT     (VDP_DATA), A
+    CALL    VDP_DLY
+    OUT     (VDP_DATA), A
 .rnext:
     LD      DE, ENEMY_SIZE : ADD IX, DE
     DJNZ    .rloop
@@ -1223,7 +1233,12 @@ DRAW_ENEMY_BULLETS:
     JR      .next
 .hide:
     LD      A, 0xD8 : OUT (VDP_DATA), A
-    XOR     A : OUT (VDP_DATA), A : OUT (VDP_DATA), A : OUT (VDP_DATA), A
+    CALL    VDP_DLY
+    XOR     A : OUT (VDP_DATA), A
+    CALL    VDP_DLY
+    OUT     (VDP_DATA), A
+    CALL    VDP_DLY
+    OUT     (VDP_DATA), A
 .next:
     INC     IX : INC IX : INC IX : INC IX
     DJNZ    .loop
@@ -1260,7 +1275,12 @@ DRAW_TANK_BULLETS:
     JR      .next
 .hide:
     LD      A, 0xD8 : OUT (VDP_DATA), A
-    XOR     A : OUT (VDP_DATA), A : OUT (VDP_DATA), A : OUT (VDP_DATA), A
+    CALL    VDP_DLY
+    XOR     A : OUT (VDP_DATA), A
+    CALL    VDP_DLY
+    OUT     (VDP_DATA), A
+    CALL    VDP_DLY
+    OUT     (VDP_DATA), A
 .next:
     INC     IX : INC IX : INC IX : INC IX
     DJNZ    .loop
