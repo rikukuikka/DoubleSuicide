@@ -1,0 +1,48 @@
+# CLAUDE.md
+
+Double Suicide is an MSX1 game (a Wizard of Wor-style maze shooter) written in
+Z80 assembly. `README.md` documents the features, file layout, VRAM sprite
+pattern/attribute layout, the RAM map and hard-won MSX/TMS9918A gotchas: read
+it before changing anything, and keep it up to date when you change those.
+
+The owner usually writes in Finnish; answer in Finnish. Code, comments and
+README stay in English.
+
+## Build
+
+```bash
+make
+```
+
+- Assembler: sjasmplus (`sjasmplus --raw=build/DoubleSuicide.rom src/main.asm`).
+  `main.asm` INCLUDEs every other file in `src/`; there is no linker.
+- Output: `build/DoubleSuicide.rom` is committed. Rebuild it and commit it
+  together with source changes so the ROM in the repo always matches the source.
+- A build that assembles without errors is the only check available in a
+  cloud session. There is no emulator or display there, so gameplay is tested
+  by the owner locally in openMSX (`make run`) or on real MSX hardware.
+  Say so when reporting a change as done; never claim it was play-tested.
+
+## Constraints to keep in mind
+
+- Target is real MSX1 hardware (TMS9918A VDP, AY-3-8910 PSG), both PAL (50 Hz)
+  and NTSC (60 Hz); `DETECT_PAL` in `main.asm` measures the refresh rate at boot.
+- ROM starts at 0x4000 and is read-only: all mutable state lives at EQU
+  addresses in RAM from 0xC000 (`constants.asm`). When adding a variable, pick
+  a free address and add it to the RAM map in the README.
+- VDP writes go right after vblank, at the start of MAINLOOP; writes during
+  active display corrupt the picture on real machines.
+- 16x16 sprites: pattern numbers are multiples of 4. Check the sprite pattern
+  and attribute tables in the README before adding sprites.
+- sjasmplus silently accepts some invalid Z80 forms (e.g. `ADD A,(nn)`) and
+  truncates them; see README gotcha 13.
+- Subroutines must preserve registers their callers rely on (loop counters in
+  B, IX steps in DE); see README gotchas 5 and 12.
+
+## Repository notes
+
+- `*SpriteBackup.txt` are backup copies of sprite data, not used by the build.
+- `bin/` holds unrelated MSX-DOS test files.
+- `dslogo.png` / `dsgameover.png` are images of the title logo and game over
+  screen; the build does not read them (their tile data lives in the `.asm`
+  files).
