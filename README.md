@@ -96,12 +96,18 @@ because they're called from inside the game's loops.
 
 1. In Arkos Tracker, set the song's replay rate to **60 Hz** (one `Play` per
    tick; at 50 Hz it would play 20 % too fast).
-2. Export it in **AKG** format as assembler source, with the **player
-   configuration** file. Replace `src/music/song.asm` with it; keep
-   (or rename to) the `Music_Start` label at the start, since `INIT_SOUND`
-   uses it. The exported song source assembles in sjasmplus as-is.
-3. Convert the exported player configuration (its `PLY_CFG_... = 1` lines are
-   indented, which sjasmplus doesn't accept) over the old one:
+2. **File > Export > Export to AKG (generic)** (not AKM/AKY: the game uses
+   the AKG player), with these settings:
+   - Export as: **Source** (not Binary), *Export to several files* off.
+   - **Generate a configuration file for players (as source)**: on.
+   - Source profile: **Z80** (the exported song assembles in sjasmplus as-is).
+   - Source labels prefix: **`Music_`**, so the song starts with the
+     `Music_Start` label that `INIT_SOUND` uses.
+   - *Encode to address*: off (sjasmplus places the data).
+   - Sample export: irrelevant, the PSG doesn't play samples.
+3. Replace `src/music/song.asm` with the exported song, and convert the
+   exported player configuration (its `PLY_CFG_... = 1` lines are indented,
+   which sjasmplus doesn't accept) over the old one:
    ```bash
    python3 tools/rasm2sjasm.py MySong_playerconfig.asm src/music/song_playerconfig.asm
    ```
@@ -117,12 +123,32 @@ its channel while it plays.
 
 ### Replacing the sound effects
 
-Export them with Arkos Tracker's sound effect export (as source),
-replace `src/music/sfx.asm` (keep the `SoundEffects` label) and convert its
-player configuration to `src/music/sfx_playerconfig.asm` the same way. The
-effect numbers used by the game are `SFX_NUM_SHOOT` (1) and
-`SFX_NUM_EXPLOSION` (2) in `sound.asm`; the channels are chosen in `SFX_SHOOT`
-(channel A) and `SFX_ENEMY_DIE` (channel B).
+1. In Arkos Tracker each sound effect is an instrument. **File > Export >
+   Export sound effects (AKX)** lists them with an *Exported?* checkbox and
+   the *Output index* each one gets. The game plays these indexes
+   (`SFX_NUM_*` in `sound.asm`):
+
+   | Output index | Effect | Played by | Channel |
+   |---|---|---|---|
+   | 01 | Shot (`SFX_NUM_SHOOT`) | `SFX_SHOOT` | A |
+   | 02 | Explosion / death (`SFX_NUM_EXPLOSION`) | `SFX_ENEMY_DIE` | B |
+
+   **Export at least two effects**: the player doesn't check the index, so
+   playing an effect missing from the table reads garbage (wrong sound or a
+   crash). The *Found note* column is the note the effect is exported at.
+2. Same settings as for the song: **Source**, **Generate a configuration
+   file for players** on, profile **Z80**, *Encode to address* off. Leave the
+   labels prefix empty or use `SoundEffects`, then check that the table at the
+   top of the exported file is labelled exactly `SoundEffects` (rename it if
+   not): `INIT_SOUND` uses that label.
+3. Replace `src/music/sfx.asm` with the exported file and convert its player
+   configuration:
+   ```bash
+   python3 tools/rasm2sjasm.py MyEffects_playerconfig.asm src/music/sfx_playerconfig.asm
+   ```
+4. `make`. To add more effects, give them a new `SFX_NUM_*` and a wrapper
+   like `SFX_SHOOT` in `sound.asm` (choose the channel in C: 0 = A, 1 = B,
+   2 = C).
 
 ### Updating the player
 
