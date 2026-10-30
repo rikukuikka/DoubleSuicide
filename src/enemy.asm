@@ -1322,7 +1322,7 @@ SPAWN_WAVE:
     LD      B, BULLET_SIZE * 2
 .clrp:XOR   A : LD (HL), A : INC HL : DJNZ .clrp
     ; Make sure the music is playing (don't reset the position in the track)
-    LD      A, 1 : LD (BGM_ACTIVE), A
+    LD      A, 1 : LD (MUSIC_ON), A
 
     JP      SPAWN_ENEMIES_FOR_LEVEL
 

@@ -25,8 +25,7 @@ CHECK_GAME_OVER:
 ; =============================================================================
 GAME_OVER_SCREEN:
     ; Stop the sound
-    XOR     A : LD (BGM_ACTIVE), A
-    CALL    INIT_SOUND
+    CALL    STOP_SOUND
 
     ; Hide all 32 sprites by filling the whole SAT with Y=0xD8
     LD      HL, VRAM_SPRITE_ATT
