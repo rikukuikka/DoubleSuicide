@@ -103,8 +103,13 @@ ENEMY_BULLET_COLOR  EQU 8           ; red
 TANK_BULLETS        EQU 0xC099      ; 2*4=8 bytes (0xC099-0xC0A0)
 TANK_BULLET_COLOR   EQU 7           ; cyan, same as tank
 
+; Sound (sound.asm, Arkos Tracker AKG player)
+MUSIC_ON            EQU 0xC060      ; 1 = UPDATE_SOUND plays music/effects, 0 = stopped
+ARKOS_BUFFER        EQU 0xC400      ; the ROM player's variables (PLY_AKG_ROM_Buffer)
+ARKOS_BUFFER_SIZE   EQU 0x200       ; reserved 0xC400-0xC5FF; sound.asm ASSERTs it fits
+
 ; Explosions
-EXPLOSIONS      EQU 0xC07A      ; 2*3=6 bytes in RAM (0xC060-0xC062 = SFX RAM)
+EXPLOSIONS      EQU 0xC07A      ; 2*3=6 bytes in RAM
 EXPL_SIZE       EQU 3
 EXPL_TIMER_MAX  EQU 20
 EXPL_PAT1       EQU 56          ; Explosion 1 (bright) = offset 448

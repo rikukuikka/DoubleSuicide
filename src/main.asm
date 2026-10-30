@@ -11,21 +11,17 @@ ROM_HEADER:
     DS      6, 0x00
 
     INCLUDE "src/constants.asm"
-    INCLUDE "src/vdp.asm"
-    INCLUDE "src/maze.asm"
-    INCLUDE "src/input.asm"
-    INCLUDE "src/player.asm"
-    INCLUDE "src/enemy.asm"
-    INCLUDE "src/bullet.asm"
-    INCLUDE "src/boss.asm"
-    INCLUDE "src/sound.asm"
-    INCLUDE "src/hud.asm"
-    INCLUDE "src/title.asm"
-    INCLUDE "src/gameover.asm"
 
+; =============================================================================
+; INIT — entry point. The cartridge is 32 KB (0x4000-0xBFFF), but the BIOS
+; only selects its slot for page 1 (0x4000-0x7FFF): ENABLE_PAGE2 must run
+; before anything in page 2 is used, so INIT and ENABLE_PAGE2 stay right
+; after the header, and the other source files are included after them.
+; =============================================================================
 INIT:
     DI
     LD      SP, 0xF380
+    CALL    ENABLE_PAGE2
 
     CALL    VDP_INIT_SCREEN2
     CALL    DETECT_PAL            ; measure real hardware refresh rate once
@@ -222,4 +218,59 @@ GAME_TICK_COUNT:
     LD      B, 1
     RET
 
-    DS      0x8000 - $, 0xFF
+; =============================================================================
+; ENABLE_PAGE2 — select the cartridge's own slot for page 2 (0x8000-0xBFFF).
+; Our slot is the one currently selected for page 1: the primary slot comes
+; from the primary slot register (RSLREG), and if that slot is expanded, the
+; secondary slot from SLTTBL. Uses the BIOS ENASLT, which leaves interrupts
+; disabled. Must be called (and live) in page 1.
+; =============================================================================
+RSLREG      EQU 0x0138          ; BIOS: A = primary slot register
+ENASLT      EQU 0x0024          ; BIOS: select slot A for the page of address H
+EXPTBL      EQU 0xFCC1          ; 4 bytes: bit 7 = primary slot is expanded
+SLTTBL      EQU 0xFCC5          ; 4 bytes: secondary slot register per slot
+
+ENABLE_PAGE2:
+    CALL    RSLREG
+    RRCA : RRCA
+    AND     0x03                ; primary slot of page 1
+    LD      C, A
+    LD      B, 0
+    LD      HL, EXPTBL
+    ADD     HL, BC
+    LD      A, (HL)
+    AND     0x80                ; expanded flag
+    OR      C
+    LD      C, A                ; C = E00000PP
+    INC     HL : INC HL : INC HL : INC HL   ; SLTTBL + primary slot
+    LD      A, (HL)
+    AND     0x0C                ; secondary slot of page 1 (bits 2-3)
+    OR      C                   ; ENASLT format: E000SSPP
+    LD      H, 0x80
+    JP      ENASLT
+
+    ASSERT  $ <= 0x8000         ; INIT and ENABLE_PAGE2 must be in page 1
+
+    INCLUDE "src/vdp.asm"
+    INCLUDE "src/maze.asm"
+    INCLUDE "src/input.asm"
+    INCLUDE "src/player.asm"
+    INCLUDE "src/enemy.asm"
+    INCLUDE "src/bullet.asm"
+    INCLUDE "src/boss.asm"
+    INCLUDE "src/hud.asm"
+    INCLUDE "src/title.asm"
+    INCLUDE "src/gameover.asm"
+    INCLUDE "src/sound.asm"
+
+    ; Data from here on lives in page 2 (0x8000-0xBFFF) when the code still
+    ; fits in page 1, so the page 2 slot selection is always in use.
+    IF $ < 0x8000
+        DS  0x8000 - $, 0xFF
+    ENDIF
+    INCLUDE "src/music/song.asm"
+    INCLUDE "src/music/sfx.asm"
+
+    DISPLAY "ROM end: ", /H, $, ", free: ", /D, 0xC000 - $, " bytes"
+    ASSERT  $ <= 0xC000
+    DS      0xC000 - $, 0xFF
