@@ -294,12 +294,12 @@ UPDATE_BULLETS:
     RET
 
 ; =============================================================================
-; DRAW_BULLETS — draw the bullets (sprites 8 and 9)
+; DRAW_BULLETS — draw the bullets (sprites SPR_PBULLETS, +1)
 ; =============================================================================
 DRAW_BULLETS:
-    ; P1 bullet = sprite 8
+    ; P1 bullet = sprite SPR_PBULLETS
     LD      A, (0xC054) : OR A : JR Z, .hide_p1
-    LD      HL, VRAM_SPRITE_ATT + 32 : CALL VDP_SETW
+    LD      HL, VRAM_SPRITE_ATT + SPR_PBULLETS*4 : CALL VDP_SETW
     LD      A, (0xC051) : DEC A : OUT (VDP_DATA), A  ; Y, TMS9918A: Y-1
     LD      A, (0xC050) : OUT (VDP_DATA), A           ; X
     LD      HL, BULLET_DIR_PAT : LD A, (0xC052) : ADD A, L : LD L, A : LD A, (HL)
@@ -307,12 +307,12 @@ DRAW_BULLETS:
     LD      A, BULLET_COLOR : OUT (VDP_DATA), A
     JR      .p2_bullet
 .hide_p1:
-    LD      HL, VRAM_SPRITE_ATT + 32 : CALL HIDE_SPRITE
+    LD      HL, VRAM_SPRITE_ATT + SPR_PBULLETS*4 : CALL HIDE_SPRITE
 
-    ; P2 bullet = sprite 9
+    ; P2 bullet = sprite SPR_PBULLETS+1
 .p2_bullet:
     LD      A, (0xC05C) : OR A : JR Z, .hide_p2
-    LD      HL, VRAM_SPRITE_ATT + 36 : CALL VDP_SETW
+    LD      HL, VRAM_SPRITE_ATT + (SPR_PBULLETS+1)*4 : CALL VDP_SETW
     LD      A, (0xC059) : DEC A : OUT (VDP_DATA), A  ; Y, TMS9918A: Y-1
     LD      A, (0xC058) : OUT (VDP_DATA), A           ; X
     LD      HL, BULLET_DIR_PAT : LD A, (0xC05A) : ADD A, L : LD L, A : LD A, (HL)
@@ -320,7 +320,7 @@ DRAW_BULLETS:
     LD      A, BULLET_COLOR : OUT (VDP_DATA), A
     RET
 .hide_p2:
-    LD      HL, VRAM_SPRITE_ATT + 36 : CALL HIDE_SPRITE
+    LD      HL, VRAM_SPRITE_ATT + (SPR_PBULLETS+1)*4 : CALL HIDE_SPRITE
     RET
 
 ; =============================================================================
@@ -368,11 +368,11 @@ UPDATE_EXPLOSIONS:
     RET
 
 ; =============================================================================
-; DRAW_EXPLOSIONS — draw explosions (sprites 10 and 11)
+; DRAW_EXPLOSIONS — draw explosions (sprites SPR_EXPLOSIONS, +1)
 ; Timer 20-11 → Explosion 1 (bright), Timer 10-1 → Explosion 2 (fading)
 ; =============================================================================
 DRAW_EXPLOSIONS:
-    ; --- Explosion 0 → sprite 10 ---
+    ; --- Explosion 0 → sprite SPR_EXPLOSIONS ---
     LD      HL, EXPLOSIONS
     LD      A, (HL) : LD B, A   ; B = X
     INC     HL
@@ -384,16 +384,16 @@ DRAW_EXPLOSIONS:
     CP      11 : JR C, .show0
     LD      D, EXPL_PAT1 : LD E, EXPL_COLOR1
 .show0:
-    LD      HL, VRAM_SPRITE_ATT + 40 : CALL VDP_SETW
+    LD      HL, VRAM_SPRITE_ATT + SPR_EXPLOSIONS*4 : CALL VDP_SETW
     LD      A, C : DEC A : OUT (VDP_DATA), A
     LD      A, B : OUT (VDP_DATA), A
     LD      A, D : OUT (VDP_DATA), A
     LD      A, E : OUT (VDP_DATA), A
     JR      .expl1
 .hide0:
-    LD      HL, VRAM_SPRITE_ATT + 40 : CALL HIDE_SPRITE
+    LD      HL, VRAM_SPRITE_ATT + SPR_EXPLOSIONS*4 : CALL HIDE_SPRITE
 
-    ; --- Explosion 1 → sprite 11 ---
+    ; --- Explosion 1 → sprite SPR_EXPLOSIONS+1 ---
 .expl1:
     LD      HL, EXPLOSIONS + EXPL_SIZE
     LD      A, (HL) : LD B, A
@@ -406,12 +406,12 @@ DRAW_EXPLOSIONS:
     CP      11 : JR C, .show1
     LD      D, EXPL_PAT1 : LD E, EXPL_COLOR1
 .show1:
-    LD      HL, VRAM_SPRITE_ATT + 44 : CALL VDP_SETW
+    LD      HL, VRAM_SPRITE_ATT + (SPR_EXPLOSIONS+1)*4 : CALL VDP_SETW
     LD      A, C : DEC A : OUT (VDP_DATA), A
     LD      A, B : OUT (VDP_DATA), A
     LD      A, D : OUT (VDP_DATA), A
     LD      A, E : OUT (VDP_DATA), A
     RET
 .hide1:
-    LD      HL, VRAM_SPRITE_ATT + 44 : CALL HIDE_SPRITE
+    LD      HL, VRAM_SPRITE_ATT + (SPR_EXPLOSIONS+1)*4 : CALL HIDE_SPRITE
     RET

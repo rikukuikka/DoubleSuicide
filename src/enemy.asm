@@ -918,7 +918,7 @@ DRAW_ENEMIES:
     LD      IX, ENEMIES
     LD      B, MAX_ENEMIES
     LD      DE, ENEMY_SIZE              ; DE stays the same for the whole loop
-    LD      HL, VRAM_SPRITE_ATT + 8    ; starting at sprite 2
+    LD      HL, VRAM_SPRITE_ATT + SPR_ENEMIES*4
     CALL    VDP_SETW                    ; VDP address is set once
 
 .loop:
@@ -1035,13 +1035,19 @@ DRAW_RADAR:
 
     LD      A, RADAR_DOT_PAT : OUT (VDP_DATA), A
 
-    ; Color: robot=yellow, tank=cyan, ghost=white, wizard=magenta
-    LD      A, (IX+3) : CP ENEMY_TANK : JR Z, .rtankcol
+    ; Color: robot=yellow, tank=cyan (light blue once hit), ghost=white, wizard=magenta
+    LD      A, (IX+3) : CP ENEMY_TANK : JR Z, .rtank
     CP      ENEMY_GHOST : JR Z, .rghostcol
     CP      ENEMY_WIZARD : JR Z, .rwizcol
     LD      A, ROBOT_COLOR : JR .rcolout
-.rtankcol:
-    LD      A, TANK_COLOR : JR .rcolout
+.rtank:
+    ; Hurt tank: TANK_HURT_COLOR, same as on the field. Slot index = 6 - B
+    ; (B = this loop's counter, only read here; HL is free scratch)
+    LD      A, (ENEMY_HITS & 0xFF) + MAX_ENEMIES : SUB B
+    LD      L, A : LD H, ENEMY_HITS >> 8
+    LD      A, (HL) : OR A
+    LD      A, TANK_COLOR : JR Z, .rcolout
+    LD      A, TANK_HURT_COLOR : JR .rcolout
 .rghostcol:
     LD      A, GHOST_COLOR : JR .rcolout
 .rwizcol:
@@ -1243,12 +1249,12 @@ CHECK_ENEMY_BULLET_PLAYER_HIT:
     RET
 
 ; =============================================================================
-; DRAW_ENEMY_BULLETS — draw enemy bullets (sprites 12-17)
+; DRAW_ENEMY_BULLETS — draw enemy bullets (sprites SPR_EBULLETS..+5)
 ; =============================================================================
 DRAW_ENEMY_BULLETS:
     LD      IX, ENEMY_BULLETS
     LD      B, MAX_ENEMIES
-    LD      HL, VRAM_SPRITE_ATT + 48    ; starting at sprite 12
+    LD      HL, VRAM_SPRITE_ATT + SPR_EBULLETS*4
     CALL    VDP_SETW
 .loop:
     LD      A, (IX+3) : OR A : JR Z, .hide
@@ -1285,12 +1291,12 @@ UPDATE_TANK_BULLETS:
     RET
 
 ; =============================================================================
-; DRAW_TANK_BULLETS — draw the tank's bullets (sprites 18-19)
+; DRAW_TANK_BULLETS — draw the tank's bullets (sprites SPR_TBULLETS, +1)
 ; =============================================================================
 DRAW_TANK_BULLETS:
     LD      IX, TANK_BULLETS
     LD      B, 2
-    LD      HL, VRAM_SPRITE_ATT + 72   ; starting at sprite 18
+    LD      HL, VRAM_SPRITE_ATT + SPR_TBULLETS*4
     CALL    VDP_SETW
 .loop:
     LD      A, (IX+3) : OR A : JR Z, .hide

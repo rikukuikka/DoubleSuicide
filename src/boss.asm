@@ -3,10 +3,10 @@
 ; =============================================================================
 ;
 ; The Wizard is a normal-sized 16x16 sprite, but two-colored: two sprites
-; (WIZARD_SPRITE_BASE and +1) at the same X/Y position, with different
+; (WIZARD_SPRITE_BASE+1 and +2) at the same X/Y position, with different
 ; patterns and colors. On the TMS9918A the lower sprite number is drawn ON
-; TOP, so WIZARD_SPRITE_BASE (highlight color, partial pattern) is in front
-; and WIZARD_SPRITE_BASE+1 (base color, full pattern) is behind — this way
+; TOP, so WIZARD_SPRITE_BASE+1 (highlight color, partial pattern) is in front
+; and WIZARD_SPRITE_BASE+2 (base color, full pattern) is behind — this way
 ; the highlight color shows up over the full-color base.
 ;
 ; DIRECTION+ANIMATION: the WIZARD_DIR_PAT table has 16 entries (4 directions x
@@ -29,8 +29,8 @@
 ; no separate fix is (still) needed.
 ; =============================================================================
 
-WIZARD_SPRITE_BASE    EQU 26      ; sprite 26 (front, highlight) + 27 (back, base); 28 = its own bullet
-WIZARD_TOTAL_SPRITES  EQU 3       ; 26,27,28 — for the hide-all loop
+WIZARD_SPRITE_BASE    EQU SPR_WIZARD  ; +0 = its own bullet, +1 = front (highlight), +2 = back (base)
+WIZARD_TOTAL_SPRITES  EQU 3       ; bullet + 2 layers — for the hide-all loop
 
 ; Speed of the Wizard and its bullet: see CUR_WIZARD_SPEED_X2 / CUR_WIZARD_BULLET_SPEED
 ; (enemy.asm) — per-round now, no longer fixed constants.
@@ -334,27 +334,9 @@ DRAW_WIZARD:
 
     LD      HL, VRAM_SPRITE_ATT + WIZARD_SPRITE_BASE*4 : CALL VDP_SETW
 
-    ; Sprite 26 (front): highlight color, direction+frame pattern
-    LD      A, (IX+1) : DEC A : OUT (VDP_DATA), A
-    CALL    .vdp_dly
-    LD      A, (IX+0) : OUT (VDP_DATA), A
-    CALL    .vdp_dly
-    LD      A, D : OUT (VDP_DATA), A
-    CALL    .vdp_dly
-    LD      A, WIZARD_COLOR_B : OUT (VDP_DATA), A
-    CALL    .vdp_dly
-
-    ; Sprite 27 (back): base color, same direction+frame pattern (base layer)
-    LD      A, (IX+1) : DEC A : OUT (VDP_DATA), A
-    CALL    .vdp_dly
-    LD      A, (IX+0) : OUT (VDP_DATA), A
-    CALL    .vdp_dly
-    LD      A, E : OUT (VDP_DATA), A
-    CALL    .vdp_dly
-    LD      A, WIZARD_COLOR_A : OUT (VDP_DATA), A
-    CALL    .vdp_dly
-
-    ; The Wizard's bullet (its own sprite, not shared with ENEMY_BULLETS)
+    ; First sprite: the Wizard's bullet (its own sprite, not shared with
+    ; ENEMY_BULLETS). Drawn before the body layers so it has the higher
+    ; priority when a scanline has more than 4 sprites (README gotcha 17).
     LD      A, (WIZARD_BULLET+3) : OR A : JR Z, .hide_bullet
     LD      A, (WIZARD_BULLET+1) : DEC A : OUT (VDP_DATA), A
     CALL    .vdp_dly
@@ -364,7 +346,8 @@ DRAW_WIZARD:
     OUT     (VDP_DATA), A
     CALL    .vdp_dly
     LD      A, ENEMY_BULLET_COLOR : OUT (VDP_DATA), A
-    RET
+    CALL    .vdp_dly
+    JR      .layers
 .hide_bullet:
     LD      A, 0xD8 : OUT (VDP_DATA), A
     CALL    .vdp_dly
@@ -373,6 +356,27 @@ DRAW_WIZARD:
     OUT     (VDP_DATA), A
     CALL    .vdp_dly
     OUT     (VDP_DATA), A
+    CALL    .vdp_dly
+
+.layers:
+    ; Second sprite (front): highlight color, direction+frame pattern
+    LD      A, (IX+1) : DEC A : OUT (VDP_DATA), A
+    CALL    .vdp_dly
+    LD      A, (IX+0) : OUT (VDP_DATA), A
+    CALL    .vdp_dly
+    LD      A, D : OUT (VDP_DATA), A
+    CALL    .vdp_dly
+    LD      A, WIZARD_COLOR_B : OUT (VDP_DATA), A
+    CALL    .vdp_dly
+
+    ; Third sprite (back): base color, same direction+frame pattern (base layer)
+    LD      A, (IX+1) : DEC A : OUT (VDP_DATA), A
+    CALL    .vdp_dly
+    LD      A, (IX+0) : OUT (VDP_DATA), A
+    CALL    .vdp_dly
+    LD      A, E : OUT (VDP_DATA), A
+    CALL    .vdp_dly
+    LD      A, WIZARD_COLOR_A : OUT (VDP_DATA), A
     RET
 
 .hide_all:
