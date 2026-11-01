@@ -210,7 +210,27 @@ CHECK_BULLET_HIT:
 .ey_pos:
     CP      5 : JR NC, .enext
 
-    ; HIT — deactivate the enemy
+    ; HIT. A Tank survives its first hit: mark it hurt (ENEMY_HITS, drawn in
+    ; TANK_HURT_COLOR) and consume the bullet, no explosion or score.
+    PUSH    HL : INC HL : INC HL : INC HL : LD A, (HL) : POP HL  ; type
+    CP      ENEMY_TANK : JR NZ, .kill
+    LD      A, L : SUB ENEMIES & 0xFF       ; slot * ENEMY_SIZE (8)
+    RRCA : RRCA : RRCA                      ; slot number
+    ADD     A, ENEMY_HITS & 0xFF
+    PUSH    HL
+    LD      L, A : LD H, ENEMY_HITS >> 8
+    LD      A, (HL) : OR A : JR NZ, .hurt_kill   ; already hurt → dies
+    INC     (HL)
+    POP     HL
+    POP     HL : POP BC
+    POP     HL              ; HL = bullet address
+    LD      A, L : ADD A, 4 : LD L, A
+    XOR     A : LD (HL), A  ; deactivate the bullet
+    RET
+.hurt_kill:
+    POP     HL
+.kill:
+    ; Deactivate the enemy
     PUSH    HL
     LD      A, L : ADD A, 4 : LD L, A
     XOR     A : LD (HL), A
@@ -246,7 +266,8 @@ CHECK_BULLET_HIT:
 .enext:
     POP     HL
     LD      A, L : ADD A, ENEMY_SIZE : LD L, A
-    POP     BC : DJNZ .eloop
+    POP     BC
+    DEC     B : JP NZ, .eloop   ; DJNZ isn't enough (loop >128 bytes)
 
     POP     HL
     RET

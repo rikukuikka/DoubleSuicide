@@ -33,6 +33,13 @@ ENEMY_SHOOT_COOLDOWN EQU 10
 
 ROBOT_COLOR     EQU 10          ; yellow
 TANK_COLOR      EQU 7           ; cyan
+TANK_HURT_COLOR EQU 5           ; light blue — tank after its first hit
+
+; Hits taken per ENEMIES slot (1 byte per slot, index = slot number). Only
+; the Tank uses it: the first player-bullet hit sets it to 1 (the tank turns
+; TANK_HURT_COLOR), the second hit kills (CHECK_BULLET_HIT, bullet.asm).
+; Cleared in SPAWN_WAVE. Kept outside the 8-byte enemy record, which is full.
+ENEMY_HITS      EQU 0xC0B1      ; MAX_ENEMIES bytes (0xC0B1-0xC0B6)
 GHOST_COLOR     EQU 15          ; white
 GHOST_PAT_BASE  EQU 76          ; RADAR_DOT_PAT(72) reserves 4 patterns (72-75), 32 patterns: 76-107
 ; Ghost sight buffer: how many pixels beyond the edge of the player's 16x16
@@ -364,6 +371,10 @@ INIT_ENEMIES:
     LD      HL, TANK_BULLETS
     LD      B, 2 * ENEMY_BULLET_SIZE
 .clrt:XOR   A : LD (HL), A : INC HL : DJNZ .clrt
+    ; Reset the per-slot hit counters (Tank takes two hits)
+    LD      HL, ENEMY_HITS
+    LD      B, MAX_ENEMIES
+.clrh:XOR   A : LD (HL), A : INC HL : DJNZ .clrh
 
     ; First wave's enemies according to WAVE_TABLE (LEVEL is set in main.asm before this call)
     JP      SPAWN_ENEMIES_FOR_LEVEL
@@ -916,7 +927,15 @@ DRAW_ENEMIES:
 .dtank:
     LD      HL, TANK_DIR_PAT : LD A, (IX+2) : ADD A, L : LD L, A : LD A, (HL)
     OUT     (VDP_DATA), A
-    LD      A, TANK_COLOR : OUT (VDP_DATA), A
+    ; Color: TANK_COLOR, or TANK_HURT_COLOR once hit. Slot index = 6 - B
+    ; (B = this loop's counter, only read here; HL is free scratch)
+    LD      A, (ENEMY_HITS & 0xFF) + MAX_ENEMIES : SUB B
+    LD      L, A : LD H, ENEMY_HITS >> 8
+    LD      A, (HL) : OR A
+    LD      A, TANK_COLOR : JR Z, .dtcol
+    LD      A, TANK_HURT_COLOR
+.dtcol:
+    OUT     (VDP_DATA), A
     JR      .next
 
 .dghost:

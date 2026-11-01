@@ -34,7 +34,7 @@ openmsx -machine C-BIOS_MSX1 -cart build/DoubleSuicide.rom -joytype1 keys
 - **Snap-to-grid** — automatic alignment to the 8px grid when turning at a junction
 - **Portals** — openings on the left and right edges teleport to the opposite side
 - **Robot enemies** — 4-directional sprites, random-direction AI (25% chance to consider turning at a junction, otherwise keeps going straight), avoids turning back; base movement speed set by the round system
-- **Tank enemy** — chases the nearest living player (dx/dy comparison for direction choice), fires in both directions when on the same row/column along its movement axis
+- **Tank enemy** — chases the nearest living player (dx/dy comparison for direction choice), fires in both directions when on the same row/column along its movement axis; takes **two hits** to destroy — the first hit turns it light blue (color 5, `TANK_HURT_COLOR`) and gives no score, the second destroys it (per-slot hit counters in `ENEMY_HITS`); its radar dot stays cyan
 - **Ghost enemy** — chases the player like the tank but at twice the Robot/Tank base speed, never fires; **only visible when a living player is on the same row or column** (otherwise hidden), 2-frame walking animation
 - **Wizard boss** — appears every 6th level (the boss row in `WAVE_TABLE`) in place of the normal enemy mix; a two-layer 16x16 sprite (color 9 highlight drawn over a color 13 body), wanders like the Robot, teleports to a random NAVMAP point roughly every 3 seconds, and fires its own bullet at whichever player is in line. Defeating it starts a new, faster round and resets the level counter back to 1
 - **Round/difficulty system** — every time the Wizard is defeated, a round counter advances and all enemy/bullet speeds are recalculated from one tunable table (`BASE_X2_TABLE` in `enemy.asm`): round 1 starts at half a pixel/frame, round 2 at 1px/frame, round 3+ caps at 2px/frame. The Ghost and Wizard always move at twice the Robot/Tank speed. Fractional speeds are handled with a half-pixel accumulator (`GET_MOVE_DELTA`) so all positions stay whole-pixel
@@ -196,6 +196,7 @@ therefore multiples of 4.
 | C0AD          | MOVE_DELTA       | This frame's pixel count, from the half-pixel accumulator |
 | C0AE          | TITLE_SEL        | Title screen mode selection (0=1P, 1=2P), used only before GAME_MODE is set |
 | C0AF-C0B0     | PAL_ACTIVE, PAL_TICK_ACC | PAL detection and the extra-tick accumulator |
+| C0B1-C0B6     | ENEMY_HITS       | Hits taken per ENEMIES slot (Tank: 0 = intact, 1 = hurt), cleared in SPAWN_WAVE |
 | C100-C3FF     | NAVMAP           | Junction point direction bitmap (768 bytes) |
 | C400-C5FF     | ARKOS_BUFFER     | Arkos ROM player variables (`PLY_AKG_ROM_Buffer`); the current song uses 126 bytes, the full player with sound effects at most 273; `sound.asm` ASSERTs it fits |
 
