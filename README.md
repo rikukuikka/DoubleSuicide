@@ -161,6 +161,9 @@ therefore multiples of 4.
 The slots are the `SPR_*` constants in `constants.asm`. The order is the
 priority when more than 4 sprites share a scanline (gotcha 17): players and
 bullets first, so they never vanish; enemies and explosions after them.
+Within `SPR_ENEMIES` the order rotates every frame (`DRAW_ENEMIES` starts
+from slot `SPR_ROTATE` and wraps), so on a crowded line the enemies flicker
+instead of the same one staying invisible.
 
 | Sprite # | Constant | Contents                        |
 |----------|----------|--------------------------------|
@@ -205,6 +208,7 @@ bullets first, so they never vanish; enemies and explosions after them.
 | C0AE          | TITLE_SEL        | Title screen mode selection (0=1P, 1=2P), used only before GAME_MODE is set |
 | C0AF-C0B0     | PAL_ACTIVE, PAL_TICK_ACC | PAL detection and the extra-tick accumulator |
 | C0B1-C0B6     | ENEMY_HITS       | Hits taken per ENEMIES slot (Tank: 0 = intact, 1 = hurt), cleared in INIT_ENEMIES/SPAWN_WAVE and per slot in SPAWN_TANK |
+| C0B7          | SPR_ROTATE       | DRAW_ENEMIES's starting ENEMIES slot (0-5), advanced every frame for sprite flicker |
 | C100-C3FF     | NAVMAP           | Junction point direction bitmap (768 bytes) |
 | C400-C5FF     | ARKOS_BUFFER     | Arkos ROM player variables (`PLY_AKG_ROM_Buffer`); the current song uses 126 bytes, the full player with sound effects at most 273; `sound.asm` ASSERTs it fits |
 
@@ -226,7 +230,7 @@ bullets first, so they never vanish; enemies and explosions after them.
 14. **LFSR correctness needs care** — combining the feedback bit with `OR` without clearing the target bit first silently collapses the period (22 states instead of the theoretical 65535), and even a mathematically correct maximal-length LFSR produces strongly correlated *adjacent* outputs, so two back-to-back rolls (e.g. spawn column then row) only cover a small fraction of combinations. Advancing a full byte per `RAND` call instead of one bit fixes both the period and the correlation
 15. **A 32 KB cartridge must select its own slot for page 2** — the ROM spans 0x4000-0xBFFF, but the BIOS only selects the cartridge's slot for page 1 (0x4000-0x7FFF); page 2 still shows RAM until `ENABLE_PAGE2` (first thing in INIT) copies page 1's primary/secondary slot to page 2 via `RSLREG`/`EXPTBL`/`SLTTBL`/`ENASLT`. Everything INIT runs before that, and ENABLE_PAGE2 itself, must stay in page 1 (an ASSERT checks it)
 16. **sjasmplus is not RASM** — the Arkos sources rely on RASM features: `IFDEF` testing symbols set with `name = 1` (sjasmplus `IFDEF` only sees `DEFINE`s; use `IF exist name`), indented `name = value` (sjasmplus wants it in column 0), macros/REPEAT with `{param}` in label names, case-insensitive labels, trailing commas in `dw` lists. `tools/rasm2sjasm.py` handles all of these
-17. **At most 4 sprites per scanline** — the TMS9918A shows the 4 lowest-numbered sprites on each line and drops the rest (status register bit 6 = "5th sprite"); which ones disappear is not random but decided by the attribute table order. That's why players and bullets have the lowest sprite numbers (`SPR_*` in `constants.asm`): when a line is crowded, an enemy or explosion vanishes for that line instead of a bullet. Hidden sprites (Y=0xD8) don't count
+17. **At most 4 sprites per scanline** — the TMS9918A shows the 4 lowest-numbered sprites on each line and drops the rest (status register bit 6 = "5th sprite"); which ones disappear is not random but decided by the attribute table order. That's why players and bullets have the lowest sprite numbers (`SPR_*` in `constants.asm`): when a line is crowded, an enemy or explosion vanishes for that line instead of a bullet, and the enemies' order rotates every frame so they flicker rather than one staying hidden. The limit is per scanline over the whole 16-line sprite box, transparent pixels included (a bullet with 2 visible lines still occupies 16), and sprite size is global (R#1), so a bullet can't be made 8x8 on its own. Hidden sprites (Y=0xD8) don't count
 
 ### Tools
 

@@ -40,6 +40,9 @@ TANK_HURT_COLOR EQU 5           ; light blue — tank after its first hit
 ; TANK_HURT_COLOR), the second hit kills (CHECK_BULLET_HIT, bullet.asm).
 ; Cleared in INIT_ENEMIES and SPAWN_WAVE, and per slot in SPAWN_TANK. Kept outside the 8-byte enemy record, which is full.
 ENEMY_HITS      EQU 0xC0B1      ; MAX_ENEMIES bytes (0xC0B1-0xC0B6)
+; DRAW_ENEMIES's starting slot (0..MAX_ENEMIES-1), advanced every frame
+; for sprite flicker
+SPR_ROTATE      EQU 0xC0B7
 GHOST_COLOR     EQU 15          ; white
 GHOST_PAT_BASE  EQU 76          ; RADAR_DOT_PAT(72) reserves 4 patterns (72-75), 32 patterns: 76-107
 ; Ghost sight buffer: how many pixels beyond the edge of the player's 16x16
@@ -915,15 +918,28 @@ UPDATE_ENEMIES:
 ; DRAW_ENEMIES — draw all enemies as sprites
 ; =============================================================================
 DRAW_ENEMIES:
-    LD      IX, ENEMIES
+    ; Sprite flicker: start from a different ENEMIES slot every frame
+    ; (SPR_ROTATE = 0..5) and wrap around, so the sprite numbers of the
+    ; enemies rotate. On a scanline with more than 4 sprites a different
+    ; enemy is dropped each frame — they flicker instead of one of them
+    ; vanishing for good (README gotcha 17).
+    LD      A, (SPR_ROTATE) : INC A
+    CP      MAX_ENEMIES : JR C, .rot_ok
+    XOR     A
+.rot_ok:
+    LD      (SPR_ROTATE), A
+    ADD     A, A : ADD A, A : ADD A, A  ; * ENEMY_SIZE (8)
+    ADD     A, ENEMIES & 0xFF
+    LD      L, A : LD H, ENEMIES >> 8   ; ENEMIES + start slot * 8 (no carry)
+    PUSH    HL : POP IX
     LD      B, MAX_ENEMIES
     LD      DE, ENEMY_SIZE              ; DE stays the same for the whole loop
     LD      HL, VRAM_SPRITE_ATT + SPR_ENEMIES*4
     CALL    VDP_SETW                    ; VDP address is set once
 
 .loop:
-    LD      A, (IX+4) : OR A : JR Z, .hide
-    LD      A, (IX+3) : CP ENEMY_WIZARD : JR Z, .hide  ; drawn separately in DRAW_WIZARD
+    LD      A, (IX+4) : OR A : JP Z, .hide
+    LD      A, (IX+3) : CP ENEMY_WIZARD : JP Z, .hide  ; drawn separately in DRAW_WIZARD
     CP      ENEMY_GHOST : JR Z, .dghost
     LD      A, (IX+1) : DEC A : OUT (VDP_DATA), A    ; Y
     LD      A, (IX+0) : OUT (VDP_DATA), A              ; X
@@ -935,9 +951,12 @@ DRAW_ENEMIES:
 .dtank:
     LD      HL, TANK_DIR_PAT : LD A, (IX+2) : ADD A, L : LD L, A : LD A, (HL)
     OUT     (VDP_DATA), A
-    ; Color: TANK_COLOR, or TANK_HURT_COLOR once hit. Slot index = 6 - B
-    ; (B = this loop's counter, only read here; HL is free scratch)
-    LD      A, (ENEMY_HITS & 0xFF) + MAX_ENEMIES : SUB B
+    ; Color: TANK_COLOR, or TANK_HURT_COLOR once hit. The slot index comes
+    ; from IX (the loop starts at a rotating slot, so B doesn't give it)
+    PUSH    IX : POP HL
+    LD      A, L : SUB ENEMIES & 0xFF       ; slot * ENEMY_SIZE (8)
+    RRCA : RRCA : RRCA                      ; slot number
+    ADD     A, ENEMY_HITS & 0xFF
     LD      L, A : LD H, ENEMY_HITS >> 8
     LD      A, (HL) : OR A
     LD      A, TANK_COLOR : JR Z, .dtcol
@@ -973,6 +992,10 @@ DRAW_ENEMIES:
 
 .next:
     ADD     IX, DE          ; doesn't touch B (the counter) — LD BC,n would have zeroed B
+    PUSH    IX : POP HL : LD A, L       ; HL is free scratch here
+    CP      (ENEMIES + MAX_ENEMIES*ENEMY_SIZE) & 0xFF : JR NZ, .nowrap
+    LD      IX, ENEMIES     ; past the last slot → wrap to slot 0
+.nowrap:
     DEC     B : JP NZ, .loop   ; DJNZ isn't enough (loop >128 bytes)
     RET
 
