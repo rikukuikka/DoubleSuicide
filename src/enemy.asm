@@ -38,7 +38,7 @@ TANK_HURT_COLOR EQU 5           ; light blue — tank after its first hit
 ; Hits taken per ENEMIES slot (1 byte per slot, index = slot number). Only
 ; the Tank uses it: the first player-bullet hit sets it to 1 (the tank turns
 ; TANK_HURT_COLOR), the second hit kills (CHECK_BULLET_HIT, bullet.asm).
-; Cleared in SPAWN_WAVE. Kept outside the 8-byte enemy record, which is full.
+; Cleared in INIT_ENEMIES and SPAWN_WAVE, and per slot in SPAWN_TANK. Kept outside the 8-byte enemy record, which is full.
 ENEMY_HITS      EQU 0xC0B1      ; MAX_ENEMIES bytes (0xC0B1-0xC0B6)
 GHOST_COLOR     EQU 15          ; white
 GHOST_PAT_BASE  EQU 76          ; RADAR_DOT_PAT(72) reserves 4 patterns (72-75), 32 patterns: 76-107
@@ -399,6 +399,14 @@ SPAWN_TANK:
     LD      A, (CUR_RT_SPEED_X2) : LD (IX+5), A
     LD      (IX+6), 0
     LD      (IX+7), 0
+    ; A new tank is always intact: clear this slot's ENEMY_HITS entry (it may
+    ; still hold 1 from a tank killed in this slot during an earlier wave)
+    PUSH    IX : POP HL
+    LD      A, L : SUB ENEMIES & 0xFF       ; slot * ENEMY_SIZE (8)
+    RRCA : RRCA : RRCA                      ; slot number
+    ADD     A, ENEMY_HITS & 0xFF
+    LD      L, A : LD H, ENEMY_HITS >> 8
+    LD      (HL), 0
     RET
 
 ; SPAWN_GHOST — create a Ghost at the IX address via a NAVMAP point
@@ -1336,6 +1344,10 @@ SPAWN_WAVE:
     LD      HL, TANK_BULLETS
     LD      B, 2 * ENEMY_BULLET_SIZE
 .clrt:XOR   A : LD (HL), A : INC HL : DJNZ .clrt
+    ; Reset the per-slot hit counters (Tank takes two hits)
+    LD      HL, ENEMY_HITS
+    LD      B, MAX_ENEMIES
+.clrhw:XOR  A : LD (HL), A : INC HL : DJNZ .clrhw
     ; Also clear the players' bullets
     LD      HL, BULLETS
     LD      B, BULLET_SIZE * 2

@@ -200,7 +200,7 @@ therefore multiples of 4.
 | C0AD          | MOVE_DELTA       | This frame's pixel count, from the half-pixel accumulator |
 | C0AE          | TITLE_SEL        | Title screen mode selection (0=1P, 1=2P), used only before GAME_MODE is set |
 | C0AF-C0B0     | PAL_ACTIVE, PAL_TICK_ACC | PAL detection and the extra-tick accumulator |
-| C0B1-C0B6     | ENEMY_HITS       | Hits taken per ENEMIES slot (Tank: 0 = intact, 1 = hurt), cleared in SPAWN_WAVE |
+| C0B1-C0B6     | ENEMY_HITS       | Hits taken per ENEMIES slot (Tank: 0 = intact, 1 = hurt), cleared in INIT_ENEMIES/SPAWN_WAVE and per slot in SPAWN_TANK |
 | C100-C3FF     | NAVMAP           | Junction point direction bitmap (768 bytes) |
 | C400-C5FF     | ARKOS_BUFFER     | Arkos ROM player variables (`PLY_AKG_ROM_Buffer`); the current song uses 126 bytes, the full player with sound effects at most 273; `sound.asm` ASSERTs it fits |
 
