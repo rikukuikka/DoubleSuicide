@@ -34,7 +34,7 @@ openmsx -machine C-BIOS_MSX1 -cart build/DoubleSuicide.rom -joytype1 keys
 - **Snap-to-grid** — automatic alignment to the 8px grid when turning at a junction
 - **Portals** — openings on the left and right edges teleport to the opposite side
 - **Robot enemies** — 4-directional sprites, random-direction AI (25% chance to consider turning at a junction, otherwise keeps going straight), avoids turning back; base movement speed set by the round system
-- **Tank enemy** — chases the nearest living player (dx/dy comparison for direction choice), fires in both directions when on the same row/column along its movement axis
+- **Tank enemy** — chases the nearest living player (dx/dy comparison for direction choice), fires in both directions when on the same row/column along its movement axis; takes **two hits** to destroy — the first hit turns it light blue (color 5, `TANK_HURT_COLOR`), plays a metallic clang (`SFX_TANK_HIT`) and gives no score, the second destroys it (per-slot hit counters in `ENEMY_HITS`); its radar dot turns light blue too
 - **Ghost enemy** — chases the player like the tank but at twice the Robot/Tank base speed, never fires; **only visible when a living player is on the same row or column** (otherwise hidden), 2-frame walking animation
 - **Wizard boss** — appears every 6th level (the boss row in `WAVE_TABLE`) in place of the normal enemy mix; a two-layer 16x16 sprite (color 9 highlight drawn over a color 13 body), wanders like the Robot, teleports to a random NAVMAP point roughly every 3 seconds, and fires its own bullet at whichever player is in line. Defeating it starts a new, faster round and resets the level counter back to 1
 - **Round/difficulty system** — every time the Wizard is defeated, a round counter advances and all enemy/bullet speeds are recalculated from one tunable table (`BASE_X2_TABLE` in `enemy.asm`): round 1 starts at half a pixel/frame, round 2 at 1px/frame, round 3+ caps at 2px/frame. The Ghost and Wizard always move at twice the Robot/Tank speed. Fractional speeds are handled with a half-pixel accumulator (`GET_MOVE_DELTA`) so all positions stay whole-pixel
@@ -46,7 +46,7 @@ openmsx -machine C-BIOS_MSX1 -cart build/DoubleSuicide.rom -joytype1 keys
 - **Bullets** — one bullet per player, wall check at the center point, kills any enemy including the Wizard
 - **Enemy bullets** — speed derives from the current round (Robot/Tank bullets match the round's base-x2 value, the Wizard's are one step faster), don't cross into the HUD area
 - **Explosions** — 2-frame animation when an enemy is destroyed
-- **Music and sound effects** — Arkos Tracker 3 AKG player (ROM version, converted to sjasmplus), played at 60 Hz on both PAL and NTSC; the current song is the original buzzer march on channel C, the shot effect plays on channel A and the explosion/death effect on channel B (see [Music and sound effects](#music-and-sound-effects))
+- **Music and sound effects** — Arkos Tracker 3 AKG player (ROM version, converted to sjasmplus), played at 60 Hz on both PAL and NTSC; the current song is the original buzzer march on channel C, the shot effect plays on channel A, the explosion/death effect and the tank-hit clang on channel B (see [Music and sound effects](#music-and-sound-effects))
 - **Player death** — enemy touch or a bullet kills, blinking animation, respawns at the starting position
 - **3 lives** per player, the game ends when lives = 0
 - **Game over screen** — a 144x52 px image loaded into bank 1, shown once all players have died; releasing the fire button returns to the title screen
@@ -120,9 +120,13 @@ its channel while it plays.
 Export them with Arkos Tracker's sound effect export (as source),
 replace `src/music/sfx.asm` (keep the `SoundEffects` label) and convert its
 player configuration to `src/music/sfx_playerconfig.asm` the same way. The
-effect numbers used by the game are `SFX_NUM_SHOOT` (1) and
-`SFX_NUM_EXPLOSION` (2) in `sound.asm`; the channels are chosen in `SFX_SHOOT`
-(channel A) and `SFX_ENEMY_DIE` (channel B).
+effect numbers used by the game are `SFX_NUM_SHOOT` (1),
+`SFX_NUM_EXPLOSION` (2) and `SFX_NUM_TANK_HIT` (3) in `sound.asm`; the
+channels are chosen in `SFX_SHOOT` (channel A), `SFX_ENEMY_DIE` and
+`SFX_TANK_HIT` (channel B). The current effects are hand-written in the
+Arkos format (see the comments in `sfx.asm`); the player configuration must
+enable every cell type they use (e.g. `PLY_CFG_SFX_SoftOnly_Noise` for the
+tank hit's tone+noise cell).
 
 ### Updating the player
 
@@ -154,17 +158,24 @@ therefore multiples of 4.
 
 ### Sprite attribute table (32 sprites, VRAM 0x1B00+)
 
-| Sprite # | Contents                        |
-|----------|--------------------------------|
-| 0-1      | Players (P1, P2)              |
-| 2-7      | Enemies (Robot/Tank/Ghost/Wizard slot, ENEMIES table) — the Wizard itself is drawn separately via 26-28 |
-| 8-9      | Player bullets              |
-| 10-11    | Explosions                    |
-| 12-17    | Enemy bullets           |
-| 18-19    | Tank bullets            |
-| 20-25    | Radar dots (1 per ENEMIES slot) |
-| 26-28    | Wizard: front layer + back layer + its own bullet |
-| 29-31    | Free                        |
+The slots are the `SPR_*` constants in `constants.asm`. The order is the
+priority when more than 4 sprites share a scanline (gotcha 17): players and
+bullets first, so they never vanish; enemies and explosions after them.
+Within `SPR_ENEMIES` the order rotates every frame (`DRAW_ENEMIES` starts
+from slot `SPR_ROTATE` and wraps), so on a crowded line the enemies flicker
+instead of the same one staying invisible.
+
+| Sprite # | Constant | Contents                        |
+|----------|----------|--------------------------------|
+| 0-1      | `SPR_PLAYERS`    | Players (P1, P2)              |
+| 2-3      | `SPR_PBULLETS`   | Player bullets              |
+| 4-9      | `SPR_EBULLETS`   | Enemy bullets (1 per ENEMIES slot) |
+| 10-11    | `SPR_TBULLETS`   | Tank bullets            |
+| 12-14    | `SPR_WIZARD`     | Wizard: its own bullet + front layer + back layer |
+| 15-20    | `SPR_ENEMIES`    | Enemies (Robot/Tank/Ghost/Wizard slot, ENEMIES table) — the Wizard itself is drawn via `SPR_WIZARD` |
+| 21-22    | `SPR_EXPLOSIONS` | Explosions                    |
+| 23-28    | `SPR_RADAR`      | Radar dots (1 per ENEMIES slot) |
+| 29-31    | —                | Free                        |
 
 ### RAM map (0xC000+)
 
@@ -196,6 +207,8 @@ therefore multiples of 4.
 | C0AD          | MOVE_DELTA       | This frame's pixel count, from the half-pixel accumulator |
 | C0AE          | TITLE_SEL        | Title screen mode selection (0=1P, 1=2P), used only before GAME_MODE is set |
 | C0AF-C0B0     | PAL_ACTIVE, PAL_TICK_ACC | PAL detection and the extra-tick accumulator |
+| C0B1-C0B6     | ENEMY_HITS       | Hits taken per ENEMIES slot (Tank: 0 = intact, 1 = hurt), cleared in INIT_ENEMIES/SPAWN_WAVE and per slot in SPAWN_TANK |
+| C0B7          | SPR_ROTATE       | DRAW_ENEMIES's starting ENEMIES slot (0-5), advanced every frame for sprite flicker |
 | C100-C3FF     | NAVMAP           | Junction point direction bitmap (768 bytes) |
 | C400-C5FF     | ARKOS_BUFFER     | Arkos ROM player variables (`PLY_AKG_ROM_Buffer`); the current song uses 126 bytes, the full player with sound effects at most 273; `sound.asm` ASSERTs it fits |
 
@@ -217,6 +230,7 @@ therefore multiples of 4.
 14. **LFSR correctness needs care** — combining the feedback bit with `OR` without clearing the target bit first silently collapses the period (22 states instead of the theoretical 65535), and even a mathematically correct maximal-length LFSR produces strongly correlated *adjacent* outputs, so two back-to-back rolls (e.g. spawn column then row) only cover a small fraction of combinations. Advancing a full byte per `RAND` call instead of one bit fixes both the period and the correlation
 15. **A 32 KB cartridge must select its own slot for page 2** — the ROM spans 0x4000-0xBFFF, but the BIOS only selects the cartridge's slot for page 1 (0x4000-0x7FFF); page 2 still shows RAM until `ENABLE_PAGE2` (first thing in INIT) copies page 1's primary/secondary slot to page 2 via `RSLREG`/`EXPTBL`/`SLTTBL`/`ENASLT`. Everything INIT runs before that, and ENABLE_PAGE2 itself, must stay in page 1 (an ASSERT checks it)
 16. **sjasmplus is not RASM** — the Arkos sources rely on RASM features: `IFDEF` testing symbols set with `name = 1` (sjasmplus `IFDEF` only sees `DEFINE`s; use `IF exist name`), indented `name = value` (sjasmplus wants it in column 0), macros/REPEAT with `{param}` in label names, case-insensitive labels, trailing commas in `dw` lists. `tools/rasm2sjasm.py` handles all of these
+17. **At most 4 sprites per scanline** — the TMS9918A shows the 4 lowest-numbered sprites on each line and drops the rest (status register bit 6 = "5th sprite"); which ones disappear is not random but decided by the attribute table order. That's why players and bullets have the lowest sprite numbers (`SPR_*` in `constants.asm`): when a line is crowded, an enemy or explosion vanishes for that line instead of a bullet, and the enemies' order rotates every frame so they flicker rather than one staying hidden. The limit is per scanline over the whole 16-line sprite box, transparent pixels included (a bullet with 2 visible lines still occupies 16), and sprite size is global (R#1), so a bullet can't be made 8x8 on its own. Hidden sprites (Y=0xD8) don't count
 
 ### Tools
 

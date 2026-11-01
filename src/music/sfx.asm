@@ -8,6 +8,7 @@
 SoundEffects:
     dw SoundEffects_Shoot          ; Sound effect 1 (SFX_NUM_SHOOT).
     dw SoundEffects_Explosion      ; Sound effect 2 (SFX_NUM_EXPLOSION).
+    dw SoundEffects_TankHit        ; Sound effect 3 (SFX_NUM_TANK_HIT).
 
 ; Sound effect 1: shot. Tone, volume 13, period rising 62 -> 182 (pitch falls).
 SoundEffects_Shoot:
@@ -69,4 +70,32 @@ SoundEffects_Explosion:
     db 7                           ; Noise: 7.
     db 136                         ; No Soft no Hard. Volume: 1. Noise.
     db 7                           ; Noise: 7.
+    db 4                           ; End of the sound effect.
+
+; Sound effect 3: tank hit (first hit, the tank survives). A metallic clang,
+; unlike the noisy explosion: one tick of high noise for the impact, then a
+; tone ringing between periods 90 and 96 while fading 15 -> 4.
+SoundEffects_TankHit:
+    db 0                           ; Speed.
+    db 189                         ; Soft only. Volume: 15. Noise.
+    db 1                           ; Noise: 1.
+    dw 90                          ; Software period.
+    db 57                          ; Soft only. Volume: 14.
+    dw 96                          ; Software period.
+    db 53                          ; Soft only. Volume: 13.
+    dw 90                          ; Software period.
+    db 49                          ; Soft only. Volume: 12.
+    dw 96                          ; Software period.
+    db 45                          ; Soft only. Volume: 11.
+    dw 90                          ; Software period.
+    db 41                          ; Soft only. Volume: 10.
+    dw 96                          ; Software period.
+    db 37                          ; Soft only. Volume: 9.
+    dw 90                          ; Software period.
+    db 33                          ; Soft only. Volume: 8.
+    dw 96                          ; Software period.
+    db 25                          ; Soft only. Volume: 6.
+    dw 90                          ; Software period.
+    db 17                          ; Soft only. Volume: 4.
+    dw 96                          ; Software period.
     db 4                           ; End of the sound effect.

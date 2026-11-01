@@ -23,6 +23,21 @@ VRAM_NAMETABLE  EQU 0x1800
 VRAM_SPRITE_ATT EQU 0x1B00
 VRAM_SPRITE_PAT EQU 0x3800
 
+; Sprite attribute slots (sprite numbers). The TMS9918A shows at most 4
+; sprites per scanline and drops the ones with the HIGHEST numbers, so the
+; order below is the priority: players and all bullets come first, enemies
+; and explosions after them (README gotcha 17). Radar dots are in the HUD,
+; where no playfield sprite goes, so their place in the order doesn't matter.
+SPR_PLAYERS         EQU 0       ; 0-1   P1, P2
+SPR_PBULLETS        EQU 2       ; 2-3   player bullets
+SPR_EBULLETS        EQU 4       ; 4-9   enemy bullets (1 per ENEMIES slot)
+SPR_TBULLETS        EQU 10      ; 10-11 tank bullets
+SPR_WIZARD          EQU 12      ; 12-14 Wizard bullet, front layer, back layer
+SPR_ENEMIES         EQU 15      ; 15-20 enemies (1 per ENEMIES slot)
+SPR_EXPLOSIONS      EQU 21      ; 21-22 explosions
+SPR_RADAR           EQU 23      ; 23-28 radar dots (1 per ENEMIES slot)
+                                ; 29-31 free
+
 ; Directions (= sprite pattern number)
 DIR_RIGHT   EQU 0
 DIR_LEFT    EQU 1
@@ -130,7 +145,7 @@ RADAR_BORDER_BOTTOM EQU 42      ; bottom edge (row 23, columns 14-17)
 RADAR_BORDER_R      EQU 43      ; right edge (rows 22-23)
 RADAR_BORDER_L      EQU 44      ; left edge (rows 22-23)
 
-RADAR_SPRITE_BASE   EQU 20      ; sprites 20-25 (6 total, free)
+RADAR_SPRITE_BASE   EQU SPR_RADAR ; 6 sprites, 1 per ENEMIES slot
 RADAR_DOT_PAT       EQU 72      ; small dot pattern (tank uses 64-71, see enemy.asm)
 RADAR_ORIGIN_X      EQU 112     ; column14 * 8
 RADAR_ORIGIN_Y      EQU 168     ; row21 * 8, already includes the Y-1 adjustment

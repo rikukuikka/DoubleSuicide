@@ -11,8 +11,8 @@
 ; made for a 60 Hz replay rate.
 ;
 ; Channels: the music may use all three; a sound effect replaces the music on
-; its channel while it plays. SFX_SHOOT plays on channel A, SFX_ENEMY_DIE on
-; channel B; the current song only uses channel C.
+; its channel while it plays. SFX_SHOOT plays on channel A, SFX_ENEMY_DIE and
+; SFX_TANK_HIT on channel B; the current song only uses channel C.
 ;
 ; R7: PLY_AKG_HARDWARE_MSX makes the player keep R7 bit 7 = 1 (port B
 ; output) and bit 6 = 0 (port A input, joystick) — see README gotcha 6.
@@ -24,6 +24,7 @@
 ; Effect numbers in music/sfx.asm (the first one is 1)
 SFX_NUM_SHOOT       EQU 1
 SFX_NUM_EXPLOSION   EQU 2
+SFX_NUM_TANK_HIT    EQU 3
 
 ; =============================================================================
 ; INIT_SOUND — silence the PSG, start the music from the beginning
@@ -62,6 +63,16 @@ SFX_SHOOT:
     PUSH    BC : PUSH DE : PUSH HL
     LD      A, SFX_NUM_SHOOT
     LD      C, 0                  ; channel A
+    JR      SFX_PLAY
+
+; =============================================================================
+; SFX_TANK_HIT — channel B (the Tank's first, non-lethal hit)
+; Preserves BC, DE, HL (called from inside the callers' loops).
+; =============================================================================
+SFX_TANK_HIT:
+    PUSH    BC : PUSH DE : PUSH HL
+    LD      A, SFX_NUM_TANK_HIT
+    LD      C, 1                  ; channel B
     JR      SFX_PLAY
 
 ; =============================================================================

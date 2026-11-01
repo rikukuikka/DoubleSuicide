@@ -79,7 +79,7 @@ MAINLOOP:
     CALL    DRAW_EXPLOSIONS
     CALL    DRAW_HUD
     CALL    DRAW_RADAR
-    CALL    DRAW_WIZARD           ; the Wizard only uses sprites 26-28, no collision with others
+    CALL    DRAW_WIZARD           ; the Wizard only uses sprites SPR_WIZARD..+2, no collision with others
 
     ; Run the game logic once per real vblank, twice on every 5th PAL frame
     ; (see GAME_TICK_COUNT) so real-time game speed matches NTSC regardless

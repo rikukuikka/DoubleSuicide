@@ -33,6 +33,16 @@ ENEMY_SHOOT_COOLDOWN EQU 10
 
 ROBOT_COLOR     EQU 10          ; yellow
 TANK_COLOR      EQU 7           ; cyan
+TANK_HURT_COLOR EQU 5           ; light blue — tank after its first hit
+
+; Hits taken per ENEMIES slot (1 byte per slot, index = slot number). Only
+; the Tank uses it: the first player-bullet hit sets it to 1 (the tank turns
+; TANK_HURT_COLOR), the second hit kills (CHECK_BULLET_HIT, bullet.asm).
+; Cleared in INIT_ENEMIES and SPAWN_WAVE, and per slot in SPAWN_TANK. Kept outside the 8-byte enemy record, which is full.
+ENEMY_HITS      EQU 0xC0B1      ; MAX_ENEMIES bytes (0xC0B1-0xC0B6)
+; DRAW_ENEMIES's starting slot (0..MAX_ENEMIES-1), advanced every frame
+; for sprite flicker
+SPR_ROTATE      EQU 0xC0B7
 GHOST_COLOR     EQU 15          ; white
 GHOST_PAT_BASE  EQU 76          ; RADAR_DOT_PAT(72) reserves 4 patterns (72-75), 32 patterns: 76-107
 ; Ghost sight buffer: how many pixels beyond the edge of the player's 16x16
@@ -364,6 +374,10 @@ INIT_ENEMIES:
     LD      HL, TANK_BULLETS
     LD      B, 2 * ENEMY_BULLET_SIZE
 .clrt:XOR   A : LD (HL), A : INC HL : DJNZ .clrt
+    ; Reset the per-slot hit counters (Tank takes two hits)
+    LD      HL, ENEMY_HITS
+    LD      B, MAX_ENEMIES
+.clrh:XOR   A : LD (HL), A : INC HL : DJNZ .clrh
 
     ; First wave's enemies according to WAVE_TABLE (LEVEL is set in main.asm before this call)
     JP      SPAWN_ENEMIES_FOR_LEVEL
@@ -388,6 +402,14 @@ SPAWN_TANK:
     LD      A, (CUR_RT_SPEED_X2) : LD (IX+5), A
     LD      (IX+6), 0
     LD      (IX+7), 0
+    ; A new tank is always intact: clear this slot's ENEMY_HITS entry (it may
+    ; still hold 1 from a tank killed in this slot during an earlier wave)
+    PUSH    IX : POP HL
+    LD      A, L : SUB ENEMIES & 0xFF       ; slot * ENEMY_SIZE (8)
+    RRCA : RRCA : RRCA                      ; slot number
+    ADD     A, ENEMY_HITS & 0xFF
+    LD      L, A : LD H, ENEMY_HITS >> 8
+    LD      (HL), 0
     RET
 
 ; SPAWN_GHOST — create a Ghost at the IX address via a NAVMAP point
@@ -896,15 +918,28 @@ UPDATE_ENEMIES:
 ; DRAW_ENEMIES — draw all enemies as sprites
 ; =============================================================================
 DRAW_ENEMIES:
-    LD      IX, ENEMIES
+    ; Sprite flicker: start from a different ENEMIES slot every frame
+    ; (SPR_ROTATE = 0..5) and wrap around, so the sprite numbers of the
+    ; enemies rotate. On a scanline with more than 4 sprites a different
+    ; enemy is dropped each frame — they flicker instead of one of them
+    ; vanishing for good (README gotcha 17).
+    LD      A, (SPR_ROTATE) : INC A
+    CP      MAX_ENEMIES : JR C, .rot_ok
+    XOR     A
+.rot_ok:
+    LD      (SPR_ROTATE), A
+    ADD     A, A : ADD A, A : ADD A, A  ; * ENEMY_SIZE (8)
+    ADD     A, ENEMIES & 0xFF
+    LD      L, A : LD H, ENEMIES >> 8   ; ENEMIES + start slot * 8 (no carry)
+    PUSH    HL : POP IX
     LD      B, MAX_ENEMIES
     LD      DE, ENEMY_SIZE              ; DE stays the same for the whole loop
-    LD      HL, VRAM_SPRITE_ATT + 8    ; starting at sprite 2
+    LD      HL, VRAM_SPRITE_ATT + SPR_ENEMIES*4
     CALL    VDP_SETW                    ; VDP address is set once
 
 .loop:
-    LD      A, (IX+4) : OR A : JR Z, .hide
-    LD      A, (IX+3) : CP ENEMY_WIZARD : JR Z, .hide  ; drawn separately in DRAW_WIZARD
+    LD      A, (IX+4) : OR A : JP Z, .hide
+    LD      A, (IX+3) : CP ENEMY_WIZARD : JP Z, .hide  ; drawn separately in DRAW_WIZARD
     CP      ENEMY_GHOST : JR Z, .dghost
     LD      A, (IX+1) : DEC A : OUT (VDP_DATA), A    ; Y
     LD      A, (IX+0) : OUT (VDP_DATA), A              ; X
@@ -916,7 +951,18 @@ DRAW_ENEMIES:
 .dtank:
     LD      HL, TANK_DIR_PAT : LD A, (IX+2) : ADD A, L : LD L, A : LD A, (HL)
     OUT     (VDP_DATA), A
-    LD      A, TANK_COLOR : OUT (VDP_DATA), A
+    ; Color: TANK_COLOR, or TANK_HURT_COLOR once hit. The slot index comes
+    ; from IX (the loop starts at a rotating slot, so B doesn't give it)
+    PUSH    IX : POP HL
+    LD      A, L : SUB ENEMIES & 0xFF       ; slot * ENEMY_SIZE (8)
+    RRCA : RRCA : RRCA                      ; slot number
+    ADD     A, ENEMY_HITS & 0xFF
+    LD      L, A : LD H, ENEMY_HITS >> 8
+    LD      A, (HL) : OR A
+    LD      A, TANK_COLOR : JR Z, .dtcol
+    LD      A, TANK_HURT_COLOR
+.dtcol:
+    OUT     (VDP_DATA), A
     JR      .next
 
 .dghost:
@@ -946,6 +992,10 @@ DRAW_ENEMIES:
 
 .next:
     ADD     IX, DE          ; doesn't touch B (the counter) — LD BC,n would have zeroed B
+    PUSH    IX : POP HL : LD A, L       ; HL is free scratch here
+    CP      (ENEMIES + MAX_ENEMIES*ENEMY_SIZE) & 0xFF : JR NZ, .nowrap
+    LD      IX, ENEMIES     ; past the last slot → wrap to slot 0
+.nowrap:
     DEC     B : JP NZ, .loop   ; DJNZ isn't enough (loop >128 bytes)
     RET
 
@@ -1008,13 +1058,19 @@ DRAW_RADAR:
 
     LD      A, RADAR_DOT_PAT : OUT (VDP_DATA), A
 
-    ; Color: robot=yellow, tank=cyan, ghost=white, wizard=magenta
-    LD      A, (IX+3) : CP ENEMY_TANK : JR Z, .rtankcol
+    ; Color: robot=yellow, tank=cyan (light blue once hit), ghost=white, wizard=magenta
+    LD      A, (IX+3) : CP ENEMY_TANK : JR Z, .rtank
     CP      ENEMY_GHOST : JR Z, .rghostcol
     CP      ENEMY_WIZARD : JR Z, .rwizcol
     LD      A, ROBOT_COLOR : JR .rcolout
-.rtankcol:
-    LD      A, TANK_COLOR : JR .rcolout
+.rtank:
+    ; Hurt tank: TANK_HURT_COLOR, same as on the field. Slot index = 6 - B
+    ; (B = this loop's counter, only read here; HL is free scratch)
+    LD      A, (ENEMY_HITS & 0xFF) + MAX_ENEMIES : SUB B
+    LD      L, A : LD H, ENEMY_HITS >> 8
+    LD      A, (HL) : OR A
+    LD      A, TANK_COLOR : JR Z, .rcolout
+    LD      A, TANK_HURT_COLOR : JR .rcolout
 .rghostcol:
     LD      A, GHOST_COLOR : JR .rcolout
 .rwizcol:
@@ -1216,12 +1272,12 @@ CHECK_ENEMY_BULLET_PLAYER_HIT:
     RET
 
 ; =============================================================================
-; DRAW_ENEMY_BULLETS — draw enemy bullets (sprites 12-17)
+; DRAW_ENEMY_BULLETS — draw enemy bullets (sprites SPR_EBULLETS..+5)
 ; =============================================================================
 DRAW_ENEMY_BULLETS:
     LD      IX, ENEMY_BULLETS
     LD      B, MAX_ENEMIES
-    LD      HL, VRAM_SPRITE_ATT + 48    ; starting at sprite 12
+    LD      HL, VRAM_SPRITE_ATT + SPR_EBULLETS*4
     CALL    VDP_SETW
 .loop:
     LD      A, (IX+3) : OR A : JR Z, .hide
@@ -1258,12 +1314,12 @@ UPDATE_TANK_BULLETS:
     RET
 
 ; =============================================================================
-; DRAW_TANK_BULLETS — draw the tank's bullets (sprites 18-19)
+; DRAW_TANK_BULLETS — draw the tank's bullets (sprites SPR_TBULLETS, +1)
 ; =============================================================================
 DRAW_TANK_BULLETS:
     LD      IX, TANK_BULLETS
     LD      B, 2
-    LD      HL, VRAM_SPRITE_ATT + 72   ; starting at sprite 18
+    LD      HL, VRAM_SPRITE_ATT + SPR_TBULLETS*4
     CALL    VDP_SETW
 .loop:
     LD      A, (IX+3) : OR A : JR Z, .hide
@@ -1317,6 +1373,10 @@ SPAWN_WAVE:
     LD      HL, TANK_BULLETS
     LD      B, 2 * ENEMY_BULLET_SIZE
 .clrt:XOR   A : LD (HL), A : INC HL : DJNZ .clrt
+    ; Reset the per-slot hit counters (Tank takes two hits)
+    LD      HL, ENEMY_HITS
+    LD      B, MAX_ENEMIES
+.clrhw:XOR  A : LD (HL), A : INC HL : DJNZ .clrhw
     ; Also clear the players' bullets
     LD      HL, BULLETS
     LD      B, BULLET_SIZE * 2
