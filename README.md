@@ -34,7 +34,7 @@ openmsx -machine C-BIOS_MSX1 -cart build/DoubleSuicide.rom -joytype1 keys
 - **Snap-to-grid** — automatic alignment to the 8px grid when turning at a junction
 - **Portals** — openings on the left and right edges teleport to the opposite side
 - **Robot enemies** — 4-directional sprites, random-direction AI (25% chance to consider turning at a junction, otherwise keeps going straight), avoids turning back; base movement speed set by the round system
-- **Tank enemy** — chases the nearest living player (dx/dy comparison for direction choice), fires in both directions when on the same row/column along its movement axis; takes **two hits** to destroy — the first hit turns it light blue (color 5, `TANK_HURT_COLOR`) and gives no score, the second destroys it (per-slot hit counters in `ENEMY_HITS`); its radar dot stays cyan
+- **Tank enemy** — chases the nearest living player (dx/dy comparison for direction choice), fires in both directions when on the same row/column along its movement axis; takes **two hits** to destroy — the first hit turns it light blue (color 5, `TANK_HURT_COLOR`), plays a metallic clang (`SFX_TANK_HIT`) and gives no score, the second destroys it (per-slot hit counters in `ENEMY_HITS`); its radar dot stays cyan
 - **Ghost enemy** — chases the player like the tank but at twice the Robot/Tank base speed, never fires; **only visible when a living player is on the same row or column** (otherwise hidden), 2-frame walking animation
 - **Wizard boss** — appears every 6th level (the boss row in `WAVE_TABLE`) in place of the normal enemy mix; a two-layer 16x16 sprite (color 9 highlight drawn over a color 13 body), wanders like the Robot, teleports to a random NAVMAP point roughly every 3 seconds, and fires its own bullet at whichever player is in line. Defeating it starts a new, faster round and resets the level counter back to 1
 - **Round/difficulty system** — every time the Wizard is defeated, a round counter advances and all enemy/bullet speeds are recalculated from one tunable table (`BASE_X2_TABLE` in `enemy.asm`): round 1 starts at half a pixel/frame, round 2 at 1px/frame, round 3+ caps at 2px/frame. The Ghost and Wizard always move at twice the Robot/Tank speed. Fractional speeds are handled with a half-pixel accumulator (`GET_MOVE_DELTA`) so all positions stay whole-pixel
@@ -46,7 +46,7 @@ openmsx -machine C-BIOS_MSX1 -cart build/DoubleSuicide.rom -joytype1 keys
 - **Bullets** — one bullet per player, wall check at the center point, kills any enemy including the Wizard
 - **Enemy bullets** — speed derives from the current round (Robot/Tank bullets match the round's base-x2 value, the Wizard's are one step faster), don't cross into the HUD area
 - **Explosions** — 2-frame animation when an enemy is destroyed
-- **Music and sound effects** — Arkos Tracker 3 AKG player (ROM version, converted to sjasmplus), played at 60 Hz on both PAL and NTSC; the current song is the original buzzer march on channel C, the shot effect plays on channel A and the explosion/death effect on channel B (see [Music and sound effects](#music-and-sound-effects))
+- **Music and sound effects** — Arkos Tracker 3 AKG player (ROM version, converted to sjasmplus), played at 60 Hz on both PAL and NTSC; the current song is the original buzzer march on channel C, the shot effect plays on channel A, the explosion/death effect and the tank-hit clang on channel B (see [Music and sound effects](#music-and-sound-effects))
 - **Player death** — enemy touch or a bullet kills, blinking animation, respawns at the starting position
 - **3 lives** per player, the game ends when lives = 0
 - **Game over screen** — a 144x52 px image loaded into bank 1, shown once all players have died; releasing the fire button returns to the title screen
@@ -120,9 +120,13 @@ its channel while it plays.
 Export them with Arkos Tracker's sound effect export (as source),
 replace `src/music/sfx.asm` (keep the `SoundEffects` label) and convert its
 player configuration to `src/music/sfx_playerconfig.asm` the same way. The
-effect numbers used by the game are `SFX_NUM_SHOOT` (1) and
-`SFX_NUM_EXPLOSION` (2) in `sound.asm`; the channels are chosen in `SFX_SHOOT`
-(channel A) and `SFX_ENEMY_DIE` (channel B).
+effect numbers used by the game are `SFX_NUM_SHOOT` (1),
+`SFX_NUM_EXPLOSION` (2) and `SFX_NUM_TANK_HIT` (3) in `sound.asm`; the
+channels are chosen in `SFX_SHOOT` (channel A), `SFX_ENEMY_DIE` and
+`SFX_TANK_HIT` (channel B). The current effects are hand-written in the
+Arkos format (see the comments in `sfx.asm`); the player configuration must
+enable every cell type they use (e.g. `PLY_CFG_SFX_SoftOnly_Noise` for the
+tank hit's tone+noise cell).
 
 ### Updating the player
 

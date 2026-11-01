@@ -211,7 +211,8 @@ CHECK_BULLET_HIT:
     CP      5 : JR NC, .enext
 
     ; HIT. A Tank survives its first hit: mark it hurt (ENEMY_HITS, drawn in
-    ; TANK_HURT_COLOR) and consume the bullet, no explosion or score.
+    ; TANK_HURT_COLOR), play SFX_TANK_HIT and consume the bullet, no
+    ; explosion or score.
     PUSH    HL : INC HL : INC HL : INC HL : LD A, (HL) : POP HL  ; type
     CP      ENEMY_TANK : JR NZ, .kill
     LD      A, L : SUB ENEMIES & 0xFF       ; slot * ENEMY_SIZE (8)
@@ -222,6 +223,7 @@ CHECK_BULLET_HIT:
     LD      A, (HL) : OR A : JR NZ, .hurt_kill   ; already hurt → dies
     INC     (HL)
     POP     HL
+    CALL    SFX_TANK_HIT
     POP     HL : POP BC
     POP     HL              ; HL = bullet address
     LD      A, L : ADD A, 4 : LD L, A
