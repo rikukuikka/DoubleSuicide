@@ -12,7 +12,10 @@
 ;
 ; Channels: the music may use all three; a sound effect replaces the music on
 ; its channel while it plays. SFX_SHOOT plays on channel A, SFX_ENEMY_DIE and
-; SFX_TANK_HIT on channel B; the current song only uses channel C.
+; SFX_TANK_HIT on channel B. The current song uses all three channels
+; (melody A, bass B, drums C), so the effects briefly replace the melody or
+; the bass. The PSG has one noise generator: an effect with noise also
+; changes the drums' noise period while it plays.
 ;
 ; R7: PLY_AKG_HARDWARE_MSX makes the player keep R7 bit 7 = 1 (port B
 ; output) and bit 6 = 0 (port A input, joystick) — see README gotcha 6.

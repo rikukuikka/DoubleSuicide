@@ -46,7 +46,7 @@ openmsx -machine C-BIOS_MSX1 -cart build/DoubleSuicide.rom -joytype1 keys
 - **Bullets** — one bullet per player, wall check at the center point, kills any enemy including the Wizard
 - **Enemy bullets** — speed derives from the current round (Robot/Tank bullets match the round's base-x2 value, the Wizard's are one step faster), don't cross into the HUD area
 - **Explosions** — 2-frame animation when an enemy is destroyed
-- **Music and sound effects** — Arkos Tracker 3 AKG player (ROM version, converted to sjasmplus), played at 60 Hz on both PAL and NTSC; the current song is the original buzzer march on channel C, the shot effect plays on channel A, the explosion/death effect and the tank-hit clang on channel B (see [Music and sound effects](#music-and-sound-effects))
+- **Music and sound effects** — Arkos Tracker 3 AKG player (ROM version, converted to sjasmplus), played at 60 Hz on both PAL and NTSC; the background song (made in Arkos Tracker) uses all three channels: melody on A, bass on B, drums on C; the shot effect plays on channel A, the explosion/death effect and the tank-hit clang on channel B, overriding the music on that channel while they play (see [Music and sound effects](#music-and-sound-effects))
 - **Player death** — enemy touch or a bullet kills, blinking animation, respawns at the starting position
 - **3 lives** per player, the game ends when lives = 0
 - **Game over screen** — a 144x52 px image loaded into bank 1, shown once all players have died; releasing the fire button returns to the title screen
@@ -121,8 +121,8 @@ because they're called from inside the game's loops.
    ```
    Without a configuration file the player still works, it's just bigger and
    slower (the full player is ~3.5 KB and takes up to ~1000 instructions per
-   tick on busy songs; configured for the current song it is ~1.6 KB and
-   ~430 instructions).
+   tick on busy songs; configured for the current song it is ~2 KB and
+   ~550 instructions).
 4. `make`, and check the `ROM end / free` line. The song and the effects are
    placed in page 2 (from 0x8000), after the code.
 
@@ -244,7 +244,7 @@ instead of the same one staying invisible.
 | C0B1-C0B6     | ENEMY_HITS       | Hits taken per ENEMIES slot (Tank: 0 = intact, 1 = hurt), cleared in INIT_ENEMIES/SPAWN_WAVE and per slot in SPAWN_TANK |
 | C0B7          | SPR_ROTATE       | DRAW_ENEMIES's starting ENEMIES slot (0-5), advanced every frame for sprite flicker |
 | C100-C3FF     | NAVMAP           | Junction point direction bitmap (768 bytes) |
-| C400-C5FF     | ARKOS_BUFFER     | Arkos ROM player variables (`PLY_AKG_ROM_Buffer`); the current song uses 126 bytes, the full player with sound effects at most 273; `sound.asm` ASSERTs it fits |
+| C400-C5FF     | ARKOS_BUFFER     | Arkos ROM player variables (`PLY_AKG_ROM_Buffer`); the current song uses 152 bytes, the full player with sound effects at most 273; `sound.asm` ASSERTs it fits |
 
 ### MSX/TMS9918A gotchas learned along the way
 
