@@ -29,6 +29,15 @@ HIDE_SPRITE:
     OUT     (VDP_DATA), A
     RET
 
+; VDP_WRITE_BLOCK — copy BC bytes from DE (ROM/RAM) to VRAM address HL
+; (sprite patterns etc.). Clobbers A, BC, DE.
+VDP_WRITE_BLOCK:
+    CALL    VDP_SETW
+.lp:
+    LD      A, (DE) : OUT (VDP_DATA), A : INC DE
+    DEC     BC : LD A, B : OR C : JR NZ, .lp
+    RET
+
 ; VDP_FILL — fill BC bytes with value A starting at address HL
 VDP_FILL:
     LD      D, A
