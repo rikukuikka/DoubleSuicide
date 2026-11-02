@@ -63,7 +63,10 @@ openmsx -machine C-BIOS_MSX1 -cart build/DoubleSuicide.rom -joytype1 keys
 | `maze.asm`      | Level data (wide corridors), IS_WALL, DRAW_MAZE, INIT_NAVMAP |
 | `input.asm`     | Keyboard and joystick reading (PSG R14/R15)                   |
 | `player.asm`    | 16x16 sprites, animation, movement, portals, death      |
-| `enemy.asm`     | Robot/Tank/Ghost AI, shooting, round/speed system, LFSR random numbers, NAVMAP spawning, WAVE_TABLE, radar drawing, explosions |
+| `enemy.asm`     | Shared enemy code: data structure, round/speed system, LFSR random numbers, NAVMAP spawning, shared movement AI (RANDOM_TURN, UPDATE_CHASER), per-type UPDATE/DRAW dispatch, enemy bullets, WAVE_TABLE, radar drawing |
+| `enemy_robot.asm` | Robot: sprite data, spawning, wandering movement (also used by the Wizard), shooting, drawing |
+| `enemy_tank.asm`  | Tank: sprite data, spawning, two-hit armor (`ENEMY_HITS`), two-way shooting and its own bullets, drawing |
+| `enemy_ghost.asm` | Ghost: sprite data, spawning, row/column visibility, animated drawing |
 | `bullet.asm`    | Player bullets, collision with enemies, scoring              |
 | `boss.asm`      | Wizard boss: sprites, movement, teleport, shooting, its own bullet |
 | `sound.asm`     | Sound interface (INIT_SOUND, UPDATE_SOUND, SFX_*, STOP_SOUND), includes the Arkos player (the song and effects are included by `main.asm`, in page 2) |
@@ -153,7 +156,7 @@ therefore multiples of 4.
 | 60-63     | Explosion frame 2                      |
 | 64-71     | Tank: horizontal(64) / vertical(68)         |
 | 72-75     | Radar dot (only quadrant 72 in use, the rest blank due to the reservation) |
-| 76-107    | Ghost: 4 directions x 2 frames (`GHOST_DIR_PAT` table in `enemy.asm`) |
+| 76-107    | Ghost: 4 directions x 2 frames (`GHOST_DIR_PAT` table in `enemy_ghost.asm`) |
 | 108-171   | Wizard: 16 groups (4 directions x 2 frames x 2 color layers) (`WIZARD_DIR_PAT` table in `boss.asm`) |
 
 ### Sprite attribute table (32 sprites, VRAM 0x1B00+)

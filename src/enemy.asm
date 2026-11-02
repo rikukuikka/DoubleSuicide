@@ -1,6 +1,12 @@
 ; =============================================================================
-; enemy.asm — Enemies
+; enemy.asm — Enemies: shared code
 ; =============================================================================
+; Everything common to all enemy types lives here: the data structure, the
+; round/speed system, RAND, spawn point selection, the shared movement AI
+; (RANDOM_TURN, UPDATE_CHASER), the per-frame UPDATE/DRAW dispatch by type,
+; the radar, the per-slot enemy bullets (ENEMY_BULLETS) and WAVE_TABLE.
+; Type-specific code is in enemy_robot.asm, enemy_tank.asm and
+; enemy_ghost.asm (and the Wizard boss in boss.asm).
 ;
 ; Enemy data structure (8 bytes, accessed via the IX register):
 ;   IX+0: X
@@ -31,10 +37,6 @@ SPAWN_MIN_PLAYER_DIST EQU 50
 ; after one roll before the next (see ENEMY_SHOOT_ROLL)
 ENEMY_SHOOT_COOLDOWN EQU 10
 
-ROBOT_COLOR     EQU 10          ; yellow
-TANK_COLOR      EQU 7           ; cyan
-TANK_HURT_COLOR EQU 5           ; light blue — tank after its first hit
-
 ; Hits taken per ENEMIES slot (1 byte per slot, index = slot number). Only
 ; the Tank uses it: the first player-bullet hit sets it to 1 (the tank turns
 ; TANK_HURT_COLOR), the second hit kills (CHECK_BULLET_HIT, bullet.asm).
@@ -43,14 +45,6 @@ ENEMY_HITS      EQU 0xC0B1      ; MAX_ENEMIES bytes (0xC0B1-0xC0B6)
 ; DRAW_ENEMIES's starting slot (0..MAX_ENEMIES-1), advanced every frame
 ; for sprite flicker
 SPR_ROTATE      EQU 0xC0B7
-GHOST_COLOR     EQU 15          ; white
-GHOST_PAT_BASE  EQU 76          ; RADAR_DOT_PAT(72) reserves 4 patterns (72-75), 32 patterns: 76-107
-; Ghost sight buffer: how many pixels beyond the edge of the player's 16x16
-; sprite visibility extends. Threshold = 16 (sprite) + buffer, because
-; abs(difference) < threshold covers both the sprite overlap and the buffer
-; on both sides (see GHOST_VISIBLE).
-GHOST_SIGHT_BUFFER  EQU 10
-GHOST_SIGHT_TOL     EQU 16 + GHOST_SIGHT_BUFFER
 
 ; =============================================================================
 ; ROUND SYSTEM — enemy/bullet speed increases every time the Wizard is
@@ -164,91 +158,6 @@ ENEMY_SHOOT_COOLDOWN_ONLY:
     XOR     A                   ; force Z (fire)
     RET
 
-ROBOT_PATS:
-    ; 16x16 Robot (pattern 8 = offset 64, one frame)
-    ;Right
-    DB $00,$03,$07,$07,$03,$01,$03,$06
-    DB $05,$05,$06,$3F,$49,$49,$3F,$00
-    DB $00,$C0,$00,$E0,$E0,$80,$C0,$64
-    DB $FE,$A0,$60,$FC,$92,$92,$FC,$00
-    ;Left
-    DB $00,$03,$00,$07,$07,$01,$03,$26
-    DB $7F,$05,$06,$3F,$49,$49,$3F,$00
-    DB $00,$C0,$E0,$E0,$C0,$80,$C0,$60
-    DB $A0,$A0,$60,$FC,$92,$92,$FC,$00
-    ;Down
-    DB $00,$30,$48,$48,$78,$4F,$4C,$7B
-    DB $7B,$4D,$4F,$79,$49,$49,$31,$00
-    DB $00,$00,$00,$00,$00,$8C,$DE,$7E
-    DB $7A,$DA,$98,$00,$00,$80,$00,$00
-    ;Up
-    DB $00,$00,$01,$00,$00,$19,$5B,$5E
-    DB $7E,$7B,$31,$00,$00,$00,$00,$00
-    DB $00,$8C,$92,$92,$9E,$F2,$B2,$DE
-    DB $DE,$32,$F2,$1E,$12,$12,$0C,$00
-
-ROBOT_PATS_END:
-
-TANK_PATS:
-
-    ; Right and left
-    DB $00,$00,$01,$06,$CE,$FF,$CA,$0A
-    DB $7F,$CD,$B5,$B5,$CD,$7F,$00,$00
-    DB $00,$00,$80,$60,$73,$FF,$53,$50
-    DB $FE,$B3,$AD,$AD,$B3,$FE,$00,$00
-    ; Down and up
-    DB $1E,$33,$2D,$2D,$33,$3F,$21,$3F
-    DB $3F,$21,$3F,$33,$2D,$2D,$33,$1E
-    DB $70,$70,$20,$20,$F0,$38,$F8,$24
-    DB $24,$F8,$38,$F0,$20,$20,$70,$70
-
-TANK_PATS_END:
-
-GHOST_PATS:
-
-    ; Left 1
-    DB $00,$07,$0F,$0A,$0F,$09,$1F,$1F
-    DB $1F,$3F,$3F,$3F,$3D,$29,$24,$00
-    DB $00,$00,$80,$80,$C0,$C0,$C0,$E0
-    DB $F0,$F0,$F8,$FE,$F8,$24,$90,$00
-    ; Left 2
-    DB $00,$06,$1F,$15,$1F,$13,$1F,$1F
-    DB $1F,$3F,$3F,$3F,$3D,$24,$12,$00
-    DB $00,$00,$00,$00,$80,$80,$C0,$E0
-    DB $F0,$F8,$F8,$FC,$FE,$92,$48,$00
-    ; Right 1
-    DB $00,$00,$01,$01,$03,$03,$03,$07
-    DB $0F,$0F,$1F,$7F,$1F,$24,$09,$00
-    DB $00,$E0,$F0,$50,$F0,$90,$F8,$F8
-    DB $F8,$FC,$FC,$FC,$BC,$94,$24,$00
-    ; Right 2
-    DB $00,$00,$00,$00,$01,$01,$03,$07
-    DB $0F,$1F,$1F,$3F,$7F,$49,$12,$00
-    DB $00,$60,$F8,$A8,$F8,$C8,$F8,$F8
-    DB $F8,$FC,$FC,$FC,$BC,$24,$48,$00
-    ; Down 1
-    DB $00,$08,$28,$1C,$5F,$3F,$1F,$5F
-    DB $3F,$0F,$5F,$3F,$1F,$7E,$00,$00
-    DB $00,$00,$00,$00,$00,$80,$F0,$FC
-    DB $F6,$DE,$D6,$FC,$C0,$00,$00,$00
-    ; Down 2
-    DB $00,$30,$18,$5E,$3F,$1F,$5F,$3F
-    DB $1F,$4F,$3F,$1F,$5F,$3E,$00,$00
-    DB $00,$00,$00,$00,$00,$80,$C0,$F0
-    DB $FC,$F6,$DE,$D4,$FC,$00,$00,$00
-    ; Up 1
-    DB $00,$00,$00,$03,$3F,$6B,$7B,$6F
-    DB $3F,$0F,$01,$00,$00,$00,$00,$00
-    DB $00,$00,$7E,$F8,$FC,$FA,$F0,$FC
-    DB $FA,$F8,$FC,$FA,$38,$14,$10,$00
-    ; Up 2
-    DB $00,$00,$00,$3F,$2B,$7B,$6F,$3F
-    DB $0F,$03,$01,$00,$00,$00,$00,$00
-    DB $00,$00,$7C,$FA,$F8,$FC,$F2,$F8
-    DB $FC,$FA,$F8,$FC,$7A,$18,$0C,$00
-
-GHOST_PATS_END:
-
 ; Radar dot sprite. 16x16 sprite mode ALWAYS reserves 4 consecutive patterns
 ; per sprite (even though only one 8x8 quadrant is actually drawn) — the
 ; other 3 must be blank so the next loaded sprite's data doesn't leak into them.
@@ -259,20 +168,6 @@ RADAR_DOT_PATS:
     DB $00,$00,$00,$00,$00,$00,$00,$00      ; top-right: blank
     DB $00,$00,$00,$00,$00,$00,$00,$00      ; bottom-right: blank
 RADAR_DOT_PATS_END:
-
-    ALIGN   4
-ROBOT_DIR_PAT:
-    DB 32, 36, 44, 40   ; DIR_RIGHT=0, DIR_LEFT=1, DIR_UP=2, DIR_DOWN=3
-TANK_DIR_PAT:
-    DB 64, 64, 68, 68   ; same sprite for both horizontal directions, same for vertical
-
-    ALIGN   8
-; Ghost direction+animation frame → pattern. Index = direction*2 + frame(0/1)
-GHOST_DIR_PAT:
-    DB GHOST_PAT_BASE+8,  GHOST_PAT_BASE+12   ; DIR_RIGHT frame0,1 (Right1,2)
-    DB GHOST_PAT_BASE+0,  GHOST_PAT_BASE+4    ; DIR_LEFT  frame0,1 (Left1,2)
-    DB GHOST_PAT_BASE+24, GHOST_PAT_BASE+28   ; DIR_UP    frame0,1 (Up1,2)
-    DB GHOST_PAT_BASE+16, GHOST_PAT_BASE+20   ; DIR_DOWN  frame0,1 (Down1,2)
 
 ; =============================================================================
 ; WAVE_TABLE — enemy counts per level (easy to tweak here!)
@@ -339,30 +234,16 @@ INIT_ENEMIES:
     ; Initialize the LFSR seed
     LD      HL, 0xACE1 : LD (RAND_SEED), HL
 
-    ; Load Robot patterns (pattern 32 = offset 256)
-    LD      HL, VRAM_SPRITE_PAT + 256 : CALL VDP_SETW
-    LD      HL, ROBOT_PATS
-    LD      B, ROBOT_PATS_END - ROBOT_PATS
-.pp:LD      A, (HL) : OUT (VDP_DATA), A : INC HL : DJNZ .pp
-    ; Load Tank patterns (pattern 64 = offset 512, after the bullet/explosion
-    ; patterns — bullet.asm's two bullet directions + 2 explosions take 48-63)
-    LD      HL, VRAM_SPRITE_PAT + 512 : CALL VDP_SETW
-    LD      HL, TANK_PATS
-    LD      B, TANK_PATS_END - TANK_PATS
-.tp:LD      A, (HL) : OUT (VDP_DATA), A : INC HL : DJNZ .tp
+    ; Sprite patterns of each enemy type (enemy_*.asm)
+    CALL    LOAD_ROBOT_PATS
+    CALL    LOAD_TANK_PATS
     ; Load the radar dot pattern (RADAR_DOT_PAT=72, after the tank patterns).
     ; 16x16 mode reserves 4 patterns even though only 1 is drawn — load the whole block.
-    LD      HL, VRAM_SPRITE_PAT + RADAR_DOT_PAT*8 : CALL VDP_SETW
-    LD      HL, RADAR_DOT_PATS
-    LD      B, RADAR_DOT_PATS_END - RADAR_DOT_PATS
-.rdp:LD     A, (HL) : OUT (VDP_DATA), A : INC HL : DJNZ .rdp
-    ; Load Ghost patterns (GHOST_PAT_BASE=76, after the radar dot's 4 patterns)
-    ; The size is exactly 256 bytes — DJNZ+LD B doesn't fit (B is 8-bit), use a BC counter
-    LD      HL, VRAM_SPRITE_PAT + GHOST_PAT_BASE*8 : CALL VDP_SETW
-    LD      HL, GHOST_PATS
-    LD      BC, GHOST_PATS_END - GHOST_PATS
-.gp: LD     A, (HL) : OUT (VDP_DATA), A : INC HL
-    DEC     BC : LD A, B : OR C : JR NZ, .gp
+    LD      HL, VRAM_SPRITE_PAT + RADAR_DOT_PAT*8
+    LD      DE, RADAR_DOT_PATS
+    LD      BC, RADAR_DOT_PATS_END - RADAR_DOT_PATS
+    CALL    VDP_WRITE_BLOCK
+    CALL    LOAD_GHOST_PATS
 
     ; Clear enemies and their bullets
     LD      HL, ENEMIES
@@ -381,46 +262,6 @@ INIT_ENEMIES:
 
     ; First wave's enemies according to WAVE_TABLE (LEVEL is set in main.asm before this call)
     JP      SPAWN_ENEMIES_FOR_LEVEL
-
-; SPAWN_ROBOT — create a Robot at the IX address via a NAVMAP point
-SPAWN_ROBOT:
-    CALL    PICK_SPAWN_POS
-    CALL    RAND : AND 0x03 : LD (IX+2), A
-    LD      (IX+3), ENEMY_ROBOT
-    LD      (IX+4), 1
-    LD      A, (CUR_RT_SPEED_X2) : LD (IX+5), A
-    LD      (IX+6), 0                   ; half-pixel accumulator reset
-    LD      (IX+7), 0                   ; shooting cooldown reset
-    RET
-
-; SPAWN_TANK — create a Tank at the IX address via a NAVMAP point
-SPAWN_TANK:
-    CALL    PICK_SPAWN_POS
-    LD      (IX+2), DIR_RIGHT
-    LD      (IX+3), ENEMY_TANK
-    LD      (IX+4), 1
-    LD      A, (CUR_RT_SPEED_X2) : LD (IX+5), A
-    LD      (IX+6), 0
-    LD      (IX+7), 0
-    ; A new tank is always intact: clear this slot's ENEMY_HITS entry (it may
-    ; still hold 1 from a tank killed in this slot during an earlier wave)
-    PUSH    IX : POP HL
-    LD      A, L : SUB ENEMIES & 0xFF       ; slot * ENEMY_SIZE (8)
-    RRCA : RRCA : RRCA                      ; slot number
-    ADD     A, ENEMY_HITS & 0xFF
-    LD      L, A : LD H, ENEMY_HITS >> 8
-    LD      (HL), 0
-    RET
-
-; SPAWN_GHOST — create a Ghost at the IX address via a NAVMAP point
-SPAWN_GHOST:
-    CALL    PICK_SPAWN_POS
-    LD      (IX+2), DIR_RIGHT
-    LD      (IX+3), ENEMY_GHOST
-    LD      (IX+4), 1
-    LD      A, (CUR_GHOST_SPEED_X2) : LD (IX+5), A
-    LD      (IX+6), 0
-    RET
 
 ; =============================================================================
 ; PICK_SPAWN_POS — pick a spawn point from NAVMAP
@@ -601,84 +442,10 @@ RANDOM_TURN:
     RET
 
 ; =============================================================================
-; UPDATE_ROBOT — move a single Robot (IX = data), speed (IX+5, half-pixels)
-; =============================================================================
-UPDATE_ROBOT:
-    CALL    GET_MOVE_DELTA          ; (MOVE_DELTA) = this frame's pixel count
-    LD      A, (IX+2) : LD D, A     ; D = direction
-
-    ; Try moving in the current direction — blocked → RANDOM_TURN
-    CP      DIR_UP : JR NZ, .not_up
-    LD      A, (MOVE_DELTA) : LD C, A : LD A, (IX+1) : SUB C : CP 8 : JP C, RANDOM_TURN
-    LD      E, A
-    LD      B, (IX+0) : LD C, E : CALL IS_WALL : JP NZ, RANDOM_TURN
-    LD      A, (IX+0) : ADD A, 15 : LD B, A : LD C, E : CALL IS_WALL : JP NZ, RANDOM_TURN
-    LD      (IX+1), E : JP .maybe_turn
-.not_up:
-    CP      DIR_DOWN : JR NZ, .not_down
-    LD      A, (MOVE_DELTA) : LD C, A : LD A, (IX+1) : ADD A, C : CP 153 : JP NC, RANDOM_TURN
-    LD      E, A
-    LD      B, (IX+0) : LD A, E : ADD A, 15 : LD C, A : CALL IS_WALL : JP NZ, RANDOM_TURN
-    LD      A, (IX+0) : ADD A, 15 : LD B, A : LD A, E : ADD A, 15 : LD C, A : CALL IS_WALL : JP NZ, RANDOM_TURN
-    LD      (IX+1), E : JP .maybe_turn
-.not_down:
-    CP      DIR_LEFT : JR NZ, .not_left
-    LD      A, (MOVE_DELTA) : LD C, A : LD A, (IX+0) : SUB C : JP C, RANDOM_TURN
-    LD      E, A
-    LD      B, E : LD C, (IX+1) : CALL IS_WALL : JP NZ, RANDOM_TURN
-    LD      B, E : LD A, (IX+1) : ADD A, 15 : LD C, A : CALL IS_WALL : JP NZ, RANDOM_TURN
-    LD      (IX+0), E : JP .maybe_turn
-.not_left:
-    ; DIR_RIGHT
-    LD      A, (MOVE_DELTA) : LD C, A : LD A, (IX+0) : ADD A, C : CP 241 : JP NC, RANDOM_TURN
-    LD      E, A
-    LD      A, E : ADD A, 15 : LD B, A : LD C, (IX+1) : CALL IS_WALL : JP NZ, RANDOM_TURN
-    LD      A, E : ADD A, 15 : LD B, A : LD A, (IX+1) : ADD A, 15 : LD C, A : CALL IS_WALL : JP NZ, RANDOM_TURN
-    LD      (IX+0), E
-
-.maybe_turn:
-    ; 8px alignment check — only turn when on a tile boundary
-    LD      A, (IX+0) : AND 0x07 : RET NZ
-    LD      A, (IX+1) : AND 0x07 : RET NZ
-    ; 25% probability gate
-    CALL    RAND : AND 0x03 : RET NZ
-
-    CALL    GET_NAVMAP_DIRS  ; A = direction bitmap
-    OR      A : RET Z        ; no directions available
-
-    ; Filter to directions perpendicular to the current movement direction
-    LD      B, A             ; B = all available directions
-    LD      A, (IX+2) : AND 0x02   ; bit 1 = axis (0=horizontal, 2=vertical)
-    JR      NZ, .mt_vert
-    ; Horizontal (RIGHT/LEFT) → vertical perpendiculars (UP=b2, DOWN=b3)
-    LD      A, B : SRL A : SRL A : AND 0x03
-    LD      C, 2            ; base direction UP=2, DOWN=3
-    JR      .mt_pick
-.mt_vert:
-    ; Vertical (UP/DOWN) → horizontal perpendiculars (RIGHT=b0, LEFT=b1)
-    LD      A, B : AND 0x03
-    LD      C, 0            ; base direction RIGHT=0, LEFT=1
-.mt_pick:
-    OR      A : RET Z        ; no perpendiculars available → keep going straight
-    LD      B, A
-    CP      0x03 : JR NZ, .mt_one
-    ; Both perpendicular directions free → pick one at random
-    CALL    RAND : AND 0x01 : OR C : LD (IX+2), A
-    RET
-.mt_one:
-    ; Only one perpendicular direction — pick it
-    BIT     0, B : JR NZ, .mt_b0
-    LD      A, C : INC A : LD (IX+2), A   ; bit1 → LEFT or DOWN
-    RET
-.mt_b0:
-    LD      A, C : LD (IX+2), A            ; bit0 → RIGHT or UP
-    RET
-
-; =============================================================================
-; TANK_TOWARD_PLAYER — returns A = direction toward a living player
+; CHASER_TOWARD_PLAYER — returns A = direction toward a living player
 ; Uses: B, C, D, E, H, L. Preserves: IX, the original D, E.
 ; =============================================================================
-TANK_TOWARD_PLAYER:
+CHASER_TOWARD_PLAYER:
     PUSH    DE
     PUSH    HL
 
@@ -721,7 +488,8 @@ TANK_TOWARD_PLAYER:
 ; =============================================================================
 ; UPDATE_CHASER — move an enemy toward the player (IX = data)
 ; Shared by the tank and the ghost: SPAWN_* sets the speed*2 (IX+5), the
-; logic is otherwise identical. TANK_TRY_SHOOT is not called for the ghost.
+; logic is otherwise identical. Shooting is separate (UPDATE_TANK fires after
+; this, the ghost doesn't fire).
 ; =============================================================================
 UPDATE_CHASER:
     CALL    GET_MOVE_DELTA          ; (MOVE_DELTA) = this frame's pixel count
@@ -758,7 +526,7 @@ UPDATE_CHASER:
     ; Grid boundary: turn toward the player using NAVMAP — never backward
     LD      A, (IX+0) : AND 0x07 : RET NZ
     LD      A, (IX+1) : AND 0x07 : RET NZ
-    CALL    TANK_TOWARD_PLAYER   ; A = preferred direction
+    CALL    CHASER_TOWARD_PLAYER   ; A = preferred direction
     LD      D, A
     ; Filter: only turn if the preference is perpendicular to the current axis
     LD      A, (IX+2) : AND 0x02
@@ -782,7 +550,7 @@ UPDATE_CHASER:
 .tchg:
     ; Wall ahead — compute the direction toward the player and try it;
     ; blocked → shared RANDOM_TURN (tail-call)
-    CALL    TANK_TOWARD_PLAYER
+    CALL    CHASER_TOWARD_PLAYER
     LD      D, A
 
     ; Try direction D — check BOTH corners (same as the main movement code)
@@ -814,72 +582,6 @@ UPDATE_CHASER:
     LD      (IX+2), D : RET
 
 ; =============================================================================
-; TANK_TRY_SHOOT — fires in both directions when on the same row/column
-; Input: IX = tank data
-; =============================================================================
-TANK_TRY_SHOOT:
-    PUSH    BC
-    PUSH    DE
-    PUSH    HL
-
-    ; Find a living player (B=X, C=Y)
-    LD      A, (P1_DEAD_TMR) : OR A : JR NZ, .tts_p2
-    LD      A, (P1_LIVES)    : OR A : JR Z,  .tts_p2
-    LD      A, (P1_X) : LD B, A : LD A, (P1_Y) : LD C, A
-    JR      .tts_chk
-.tts_p2:
-    LD      A, (P2_DEAD_TMR) : OR A : JR NZ, .tts_done
-    LD      A, (P2_LIVES)    : OR A : JR Z,  .tts_done
-    LD      A, (P2_X) : LD B, A : LD A, (P2_Y) : LD C, A
-
-.tts_chk:
-    ; Firing axis = the tank's movement axis (not the player's position)
-    LD      A, (IX+2) : AND 0x02   ; 0=horizontal, 2=vertical
-    JR      NZ, .tts_vert_axis
-
-    ; Horizontal axis (RIGHT/LEFT): fire only if on the same row
-    LD      A, (IX+1) : SUB C
-    JP      P, .tts_ry
-    NEG
-.tts_ry:
-    CP      4 : JR NC, .tts_done
-    LD      B, ENEMY_SHOOT_COOLDOWN
-    CALL    ENEMY_SHOOT_ROLL : JR NZ, .tts_done  ; cooldown+50% (Z=fire)
-    LD      E, DIR_LEFT : LD D, DIR_RIGHT
-    JR      .tts_fire
-
-.tts_vert_axis:
-    ; Vertical axis (UP/DOWN): fire only if in the same column
-    LD      A, (IX+0) : SUB B
-    JP      P, .tts_cx
-    NEG
-.tts_cx:
-    CP      4 : JR NC, .tts_done
-    LD      B, ENEMY_SHOOT_COOLDOWN
-    CALL    ENEMY_SHOOT_ROLL : JR NZ, .tts_done  ; cooldown+50% (Z=fire)
-    LD      E, DIR_UP : LD D, DIR_DOWN
-
-.tts_fire:
-    ; E = first direction, D = second direction
-    LD      HL, TANK_BULLETS + 3       ; slot 0 active flag
-    LD      A, (HL) : OR A : JR NZ, .tts_b1
-    DEC     HL : DEC HL : DEC HL
-    LD      A, (IX+0) : LD (HL), A : INC HL
-    LD      A, (IX+1) : LD (HL), A : INC HL
-    LD      A, E : LD (HL), A : INC HL : LD (HL), 1
-.tts_b1:
-    LD      HL, TANK_BULLETS + 7       ; slot 1 active flag
-    LD      A, (HL) : OR A : JR NZ, .tts_done
-    DEC     HL : DEC HL : DEC HL
-    LD      A, (IX+0) : LD (HL), A : INC HL
-    LD      A, (IX+1) : LD (HL), A : INC HL
-    LD      A, D : LD (HL), A : INC HL : LD (HL), 1
-
-.tts_done:
-    POP     HL : POP DE : POP BC
-    RET
-
-; =============================================================================
 ; UPDATE_ENEMIES — update all enemies
 ; =============================================================================
 UPDATE_ENEMIES:
@@ -893,16 +595,15 @@ UPDATE_ENEMIES:
     LD      A, (IX+3)
     CP      ENEMY_ROBOT : JR NZ, .chk_tank
     PUSH    DE : CALL UPDATE_ROBOT : POP DE
-    LD      A, D : CALL ENEMY_TRY_SHOOT
+    LD      A, D : CALL ROBOT_TRY_SHOOT
     JR      .skip
 .chk_tank:
     CP      ENEMY_TANK : JR NZ, .chk_ghost
-    PUSH    DE : CALL UPDATE_CHASER : POP DE
-    CALL    TANK_TRY_SHOOT
+    CALL    UPDATE_TANK           ; enemy_tank.asm: chase + two-way shot
     JR      .skip
 .chk_ghost:
     CP      ENEMY_GHOST : JR NZ, .chk_wizard
-    CALL    UPDATE_CHASER         ; same chase logic as the tank, doesn't fire
+    CALL    UPDATE_GHOST          ; enemy_ghost.asm: chase, doesn't fire
     JR      .skip
 .chk_wizard:
     CP      ENEMY_WIZARD : JR NZ, .skip
@@ -938,47 +639,23 @@ DRAW_ENEMIES:
     CALL    VDP_SETW                    ; VDP address is set once
 
 .loop:
-    LD      A, (IX+4) : OR A : JP Z, .hide
-    LD      A, (IX+3) : CP ENEMY_WIZARD : JP Z, .hide  ; drawn separately in DRAW_WIZARD
-    CP      ENEMY_GHOST : JR Z, .dghost
-    LD      A, (IX+1) : DEC A : OUT (VDP_DATA), A    ; Y
-    LD      A, (IX+0) : OUT (VDP_DATA), A              ; X
-    LD      A, (IX+3) : CP ENEMY_TANK : JR Z, .dtank
-    LD      HL, ROBOT_DIR_PAT : LD A, (IX+2) : ADD A, L : LD L, A : LD A, (HL)
-    OUT     (VDP_DATA), A
-    LD      A, ROBOT_COLOR : OUT (VDP_DATA), A
+    ; Each type's DRAW_*_SPRITE (enemy_*.asm) writes the 4 attribute bytes;
+    ; they must preserve B (loop counter) and DE (IX step)
+    LD      A, (IX+4) : OR A : JR Z, .hide
+    LD      A, (IX+3)
+    CP      ENEMY_ROBOT : JR NZ, .not_robot
+    CALL    DRAW_ROBOT_SPRITE
     JR      .next
-.dtank:
-    LD      HL, TANK_DIR_PAT : LD A, (IX+2) : ADD A, L : LD L, A : LD A, (HL)
-    OUT     (VDP_DATA), A
-    ; Color: TANK_COLOR, or TANK_HURT_COLOR once hit. The slot index comes
-    ; from IX (the loop starts at a rotating slot, so B doesn't give it)
-    PUSH    IX : POP HL
-    LD      A, L : SUB ENEMIES & 0xFF       ; slot * ENEMY_SIZE (8)
-    RRCA : RRCA : RRCA                      ; slot number
-    ADD     A, ENEMY_HITS & 0xFF
-    LD      L, A : LD H, ENEMY_HITS >> 8
-    LD      A, (HL) : OR A
-    LD      A, TANK_COLOR : JR Z, .dtcol
-    LD      A, TANK_HURT_COLOR
-.dtcol:
-    OUT     (VDP_DATA), A
+.not_robot:
+    CP      ENEMY_TANK : JR NZ, .not_tank
+    CALL    DRAW_TANK_SPRITE
     JR      .next
-
-.dghost:
+.not_tank:
+    CP      ENEMY_GHOST : JR NZ, .hide     ; Wizard: drawn separately in DRAW_WIZARD
     ; The ghost is only visible when the player is on the same row/column
     CALL    GHOST_VISIBLE
     OR      A : JR Z, .hide
-    LD      A, (IX+1) : DEC A : OUT (VDP_DATA), A    ; Y
-    LD      A, (IX+0) : OUT (VDP_DATA), A              ; X
-    ; Pattern: direction*2 + animation frame (FRAME_CTR bit 3, changes every 8 frames)
-    ; NOTE: use C, not B — B is this loop's DJNZ counter (MAX_ENEMIES)
-    LD      A, (IX+2) : ADD A, A : LD C, A
-    LD      A, (FRAME_CTR) : SRL A : SRL A : SRL A : AND 0x01
-    ADD     A, C
-    LD      HL, GHOST_DIR_PAT : ADD A, L : LD L, A : LD A, (HL)
-    OUT     (VDP_DATA), A
-    LD      A, GHOST_COLOR : OUT (VDP_DATA), A
+    CALL    DRAW_GHOST_SPRITE
     JR      .next
 
 .hide:
@@ -996,43 +673,8 @@ DRAW_ENEMIES:
     CP      (ENEMIES + MAX_ENEMIES*ENEMY_SIZE) & 0xFF : JR NZ, .nowrap
     LD      IX, ENEMIES     ; past the last slot → wrap to slot 0
 .nowrap:
-    DEC     B : JP NZ, .loop   ; DJNZ isn't enough (loop >128 bytes)
+    DJNZ    .loop
     RET
-
-; =============================================================================
-; GHOST_VISIBLE — is the ghost (IX) visible? (a living player on the same
-; row OR column, tolerance <4px)
-; Output: A=1 (visible) or A=0 (hidden). Clobbers: C.
-; NOTE: must not use B, nor D/E — DRAW_ENEMIES's calling loop keeps the
-; DJNZ counter in B and the constant ENEMY_SIZE step in DE (ADD IX,DE at
-; the end of the loop) — neither may be disturbed.
-; =============================================================================
-GHOST_VISIBLE:
-    LD      A, (P1_DEAD_TMR) : OR A : JR NZ, .gv_p2
-    LD      A, (P1_LIVES) : OR A : JR Z, .gv_p2
-    LD      A, (P1_Y) : LD C, A : LD A, (IX+1) : SUB C
-    JP      P, .gv_p1y : NEG
-.gv_p1y:
-    CP      GHOST_SIGHT_TOL : JR C, .gv_yes
-    LD      A, (P1_X) : LD C, A : LD A, (IX+0) : SUB C
-    JP      P, .gv_p1x : NEG
-.gv_p1x:
-    CP      GHOST_SIGHT_TOL : JR C, .gv_yes
-.gv_p2:
-    LD      A, (P2_DEAD_TMR) : OR A : JR NZ, .gv_no
-    LD      A, (P2_LIVES) : OR A : JR Z, .gv_no
-    LD      A, (P2_Y) : LD C, A : LD A, (IX+1) : SUB C
-    JP      P, .gv_p2y : NEG
-.gv_p2y:
-    CP      GHOST_SIGHT_TOL : JR C, .gv_yes
-    LD      A, (P2_X) : LD C, A : LD A, (IX+0) : SUB C
-    JP      P, .gv_p2x : NEG
-.gv_p2x:
-    CP      GHOST_SIGHT_TOL : JR C, .gv_yes
-.gv_no:
-    XOR     A : RET
-.gv_yes:
-    LD      A, 1 : RET
 
 ; =============================================================================
 ; DRAW_RADAR — draws enemy positions on the radar as sprites (sprites
@@ -1064,13 +706,8 @@ DRAW_RADAR:
     CP      ENEMY_WIZARD : JR Z, .rwizcol
     LD      A, ROBOT_COLOR : JR .rcolout
 .rtank:
-    ; Hurt tank: TANK_HURT_COLOR, same as on the field. Slot index = 6 - B
-    ; (B = this loop's counter, only read here; HL is free scratch)
-    LD      A, (ENEMY_HITS & 0xFF) + MAX_ENEMIES : SUB B
-    LD      L, A : LD H, ENEMY_HITS >> 8
-    LD      A, (HL) : OR A
-    LD      A, TANK_COLOR : JR Z, .rcolout
-    LD      A, TANK_HURT_COLOR : JR .rcolout
+    ; Hurt tank: TANK_HURT_COLOR, same as on the field (HL is free scratch)
+    CALL    TANK_CUR_COLOR : JR .rcolout
 .rghostcol:
     LD      A, GHOST_COLOR : JR .rcolout
 .rwizcol:
@@ -1089,82 +726,6 @@ DRAW_RADAR:
 .rnext:
     LD      DE, ENEMY_SIZE : ADD IX, DE
     DJNZ    .rloop
-    RET
-
-; =============================================================================
-; ENEMY_TRY_SHOOT — try to have an enemy fire at a player
-; Input: IX = enemy data, A = enemy index (0-5)
-; Fires if the enemy is on the same row or column as the target (50% probability)
-; Odd index → P1, even → P2
-; =============================================================================
-ENEMY_TRY_SHOOT:
-    PUSH    BC
-    PUSH    DE
-    PUSH    HL
-
-    LD      E, A                    ; E = enemy index
-    ADD     A, A : ADD A, A         ; A = index * 4
-    LD      HL, ENEMY_BULLETS
-    ADD     A, L : LD L, A          ; HL = &ENEMY_BULLETS[index]
-    PUSH    HL : POP IY             ; IY = bullet slot
-
-    LD      A, (IY+3) : OR A : JR NZ, .done  ; already active → don't fire
-
-    ; Pick target: single-player always P1; two-player odd→P1, even→P2
-    LD      A, (GAME_MODE) : CP 2 : JR NZ, .target_p1
-    LD      A, E : AND 1 : JR Z, .pick_p2
-.target_p1:
-    LD      A, (P1_X) : LD B, A
-    LD      A, (P1_Y) : LD C, A
-    JR      .check
-.pick_p2:
-    LD      A, (P2_X) : LD B, A
-    LD      A, (P2_Y) : LD C, A
-
-.check:
-    ; Same row? |enemyY - targetY| < 4
-    LD      A, (IX+1) : SUB C
-    JP      P, .ry_ok
-    NEG
-.ry_ok:
-    CP      4 : JR C, .same_row
-
-    ; Same column? |enemyX - targetX| < 4
-    LD      A, (IX+0) : SUB B
-    JP      P, .cx_ok
-    NEG
-.cx_ok:
-    CP      4 : JR NC, .done        ; not in line
-
-    ; Same column: fire up or down
-    LD      A, C : CP (IX+1)
-    JR      NC, .col_down
-    LD      D, DIR_UP : JR .fire
-.col_down:
-    LD      D, DIR_DOWN : JR .fire
-
-.same_row:
-    ; Same row: fire left or right
-    LD      A, B : CP (IX+0)
-    JR      NC, .row_right
-    LD      D, DIR_LEFT : JR .fire
-.row_right:
-    LD      D, DIR_RIGHT
-
-.fire:
-    LD      A, (IX+2) : CP D : JR NZ, .done  ; only fire in the direction it's moving toward
-    LD      B, ENEMY_SHOOT_COOLDOWN
-    CALL    ENEMY_SHOOT_ROLL : JR NZ, .done  ; cooldown+50% (Z=fire)
-
-    LD      A, (IX+0) : LD (IY+0), A       ; X
-    LD      A, (IX+1) : LD (IY+1), A       ; Y
-    LD      A, D        : LD (IY+2), A      ; direction
-    LD      (IY+3), 1                        ; active
-
-.done:
-    POP     HL
-    POP     DE
-    POP     BC
     RET
 
 ; =============================================================================
@@ -1286,48 +847,6 @@ DRAW_ENEMY_BULLETS:
     LD      HL, BULLET_DIR_PAT : LD A, (IX+2) : ADD A, L : LD L, A : LD A, (HL)
     OUT     (VDP_DATA), A                             ; pattern based on direction
     LD      A, ENEMY_BULLET_COLOR : OUT (VDP_DATA), A
-    JR      .next
-.hide:
-    LD      A, 0xD8 : OUT (VDP_DATA), A
-    CALL    VDP_DLY
-    XOR     A : OUT (VDP_DATA), A
-    CALL    VDP_DLY
-    OUT     (VDP_DATA), A
-    CALL    VDP_DLY
-    OUT     (VDP_DATA), A
-.next:
-    INC     IX : INC IX : INC IX : INC IX
-    DJNZ    .loop
-    RET
-
-; =============================================================================
-; UPDATE_TANK_BULLETS — move the tank's 2 bullets (reuse UPDATE_ENEMY_BULLET)
-; =============================================================================
-UPDATE_TANK_BULLETS:
-    LD      IX, TANK_BULLETS
-    LD      B, 2
-.loop:
-    PUSH    BC
-    CALL    UPDATE_ENEMY_BULLET
-    INC     IX : INC IX : INC IX : INC IX
-    POP     BC : DJNZ .loop
-    RET
-
-; =============================================================================
-; DRAW_TANK_BULLETS — draw the tank's bullets (sprites SPR_TBULLETS, +1)
-; =============================================================================
-DRAW_TANK_BULLETS:
-    LD      IX, TANK_BULLETS
-    LD      B, 2
-    LD      HL, VRAM_SPRITE_ATT + SPR_TBULLETS*4
-    CALL    VDP_SETW
-.loop:
-    LD      A, (IX+3) : OR A : JR Z, .hide
-    LD      A, (IX+1) : DEC A : OUT (VDP_DATA), A
-    LD      A, (IX+0) : OUT (VDP_DATA), A
-    LD      HL, BULLET_DIR_PAT : LD A, (IX+2) : ADD A, L : LD L, A : LD A, (HL)
-    OUT     (VDP_DATA), A                             ; pattern based on direction
-    LD      A, TANK_BULLET_COLOR  : OUT (VDP_DATA), A
     JR      .next
 .hide:
     LD      A, 0xD8 : OUT (VDP_DATA), A

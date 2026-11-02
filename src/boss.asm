@@ -211,7 +211,7 @@ UPDATE_WIZARD:
     RET
 
 ; =============================================================================
-; WIZARD_TRY_SHOOT — fires like the Robot (ENEMY_TRY_SHOOT), but into its own
+; WIZARD_TRY_SHOOT — fires like the Robot (ROBOT_TRY_SHOOT, enemy_robot.asm), but into its own
 ; WIZARD_BULLET slot (not shared with ENEMY_BULLETS). Target: P1 if
 ; in line, otherwise P2.
 ; Input: IX = ENEMIES[0] (Wizard)

@@ -146,6 +146,6 @@ RADAR_BORDER_R      EQU 43      ; right edge (rows 22-23)
 RADAR_BORDER_L      EQU 44      ; left edge (rows 22-23)
 
 RADAR_SPRITE_BASE   EQU SPR_RADAR ; 6 sprites, 1 per ENEMIES slot
-RADAR_DOT_PAT       EQU 72      ; small dot pattern (tank uses 64-71, see enemy.asm)
+RADAR_DOT_PAT       EQU 72      ; small dot pattern (tank uses 64-71, see enemy_tank.asm)
 RADAR_ORIGIN_X      EQU 112     ; column14 * 8
 RADAR_ORIGIN_Y      EQU 168     ; row21 * 8, already includes the Y-1 adjustment
