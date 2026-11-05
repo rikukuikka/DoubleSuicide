@@ -32,7 +32,7 @@ openmsx -machine C-BIOS_MSX1 -cart build/DoubleSuicide.rom -joytype1 keys
 - **Two players** — P1 keyboard + joystick 1, P2 joystick 2; single- and two-player modes
 - **Collision detection** — pixel-accurate wall collision for the 16x16 sprite area (4 corner points)
 - **Snap-to-grid** — automatic alignment to the 8px grid when turning at a junction
-- **Portals** — openings on the left and right edges teleport to the opposite side
+- **Portals** — openings on the left and right edges teleport to the opposite side; enemies (Robot, Tank, Ghost, Wizard) use them too: when one walks off the edge on a portal row it reappears on the other side with the same direction (`ENEMY_PORTAL_WRAP` in `enemy.asm`), elsewhere the screen edge is just a wall
 - **Robot enemies** — 4-directional sprites, random-direction AI (25% chance to consider turning at a junction, otherwise keeps going straight), avoids turning back; base movement speed set by the round system
 - **Tank enemy** — chases the nearest living player (dx/dy comparison for direction choice), fires in both directions when on the same row/column along its movement axis; takes **two hits** to destroy — the first hit turns it light blue (color 5, `TANK_HURT_COLOR`), plays a metallic clang (`SFX_TANK_HIT`) and gives no score, the second destroys it (per-slot hit counters in `ENEMY_HITS`); its radar dot turns light blue too
 - **Ghost enemy** — chases the player like the tank but at twice the Robot/Tank base speed, never fires; **only visible when a living player is on the same row or column** (otherwise hidden), 2-frame walking animation

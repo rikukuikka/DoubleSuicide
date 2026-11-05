@@ -442,6 +442,23 @@ RANDOM_TURN:
     RET
 
 ; =============================================================================
+; ENEMY_PORTAL_WRAP — side portals for enemies. Called by UPDATE_ROBOT (also
+; the Wizard) and UPDATE_CHASER (Tank, Ghost) when a horizontal move would
+; leave the screen (LEFT past X=0, RIGHT past X=ENEMY_PORTAL_X_RIGHT). If the
+; enemy is on a portal row (IN_PORTAL, player.asm) it jumps to the opposite
+; edge and keeps its direction; elsewhere the edge is just a wall.
+; Input:  IX = enemy data, A = new X (0 or ENEMY_PORTAL_X_RIGHT)
+; Output: Z=1 → wrapped (IX+0 set), Z=0 → not on a portal row, nothing changed
+; Clobbers: A, C
+; =============================================================================
+ENEMY_PORTAL_X_RIGHT EQU 240    ; rightmost X an enemy can stand at (same limit as CP 241)
+ENEMY_PORTAL_WRAP:
+    LD      C, A
+    LD      A, (IX+1) : CALL IN_PORTAL : RET NZ
+    LD      (IX+0), C               ; LD doesn't touch flags: Z=1 still from IN_PORTAL
+    RET
+
+; =============================================================================
 ; CHASER_TOWARD_PLAYER — returns A = direction toward a living player
 ; Uses: B, C, D, E, H, L. Preserves: IX, the original D, E.
 ; =============================================================================
@@ -510,13 +527,13 @@ UPDATE_CHASER:
     LD      (IX+1), E : JP .tmt
 .tndn:
     CP      DIR_LEFT : JR NZ, .tnlt
-    LD      A, (MOVE_DELTA) : LD C, A : LD A, (IX+0) : SUB C : JP C, .tchg
+    LD      A, (MOVE_DELTA) : LD C, A : LD A, (IX+0) : SUB C : JP C, .edge_left
     LD      E, A
     LD      B, E : LD C, (IX+1) : CALL IS_WALL : JP NZ, .tchg
     LD      B, E : LD A, (IX+1) : ADD A, 15 : LD C, A : CALL IS_WALL : JP NZ, .tchg
     LD      (IX+0), E : JP .tmt
 .tnlt:
-    LD      A, (MOVE_DELTA) : LD C, A : LD A, (IX+0) : ADD A, C : CP 241 : JP NC, .tchg
+    LD      A, (MOVE_DELTA) : LD C, A : LD A, (IX+0) : ADD A, C : CP 241 : JP NC, .edge_right
     LD      E, A
     LD      A, E : ADD A, 15 : LD B, A : LD C, (IX+1) : CALL IS_WALL : JP NZ, .tchg
     LD      A, E : ADD A, 15 : LD B, A : LD A, (IX+1) : ADD A, 15 : LD C, A : CALL IS_WALL : JP NZ, .tchg
@@ -546,6 +563,14 @@ UPDATE_CHASER:
     BIT     1, B : RET Z : LD (IX+2), D : RET   ; LEFT
 .tmt_r:
     BIT     0, B : RET Z : LD (IX+2), D : RET   ; RIGHT
+
+    ; Screen edge reached: on a portal row wrap to the other side (keeping
+    ; the direction), otherwise treat the edge as a wall → .tchg
+.edge_left:
+    LD      A, ENEMY_PORTAL_X_RIGHT : CALL ENEMY_PORTAL_WRAP : RET Z
+    JR      .tchg
+.edge_right:
+    XOR     A : CALL ENEMY_PORTAL_WRAP : RET Z
 
 .tchg:
     ; Wall ahead — compute the direction toward the player and try it;

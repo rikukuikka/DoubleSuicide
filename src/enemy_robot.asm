@@ -79,18 +79,29 @@ UPDATE_ROBOT:
     LD      (IX+1), E : JP .maybe_turn
 .not_down:
     CP      DIR_LEFT : JR NZ, .not_left
-    LD      A, (MOVE_DELTA) : LD C, A : LD A, (IX+0) : SUB C : JP C, RANDOM_TURN
+    LD      A, (MOVE_DELTA) : LD C, A : LD A, (IX+0) : SUB C : JP C, .edge_left
     LD      E, A
     LD      B, E : LD C, (IX+1) : CALL IS_WALL : JP NZ, RANDOM_TURN
     LD      B, E : LD A, (IX+1) : ADD A, 15 : LD C, A : CALL IS_WALL : JP NZ, RANDOM_TURN
     LD      (IX+0), E : JP .maybe_turn
 .not_left:
     ; DIR_RIGHT
-    LD      A, (MOVE_DELTA) : LD C, A : LD A, (IX+0) : ADD A, C : CP 241 : JP NC, RANDOM_TURN
+    LD      A, (MOVE_DELTA) : LD C, A : LD A, (IX+0) : ADD A, C : CP 241 : JP NC, .edge_right
     LD      E, A
     LD      A, E : ADD A, 15 : LD B, A : LD C, (IX+1) : CALL IS_WALL : JP NZ, RANDOM_TURN
     LD      A, E : ADD A, 15 : LD B, A : LD A, (IX+1) : ADD A, 15 : LD C, A : CALL IS_WALL : JP NZ, RANDOM_TURN
     LD      (IX+0), E
+
+    JP      .maybe_turn
+
+    ; Screen edge reached: on a portal row wrap to the other side (keeping
+    ; the direction), otherwise it's a wall like any other → RANDOM_TURN
+.edge_left:
+    LD      A, ENEMY_PORTAL_X_RIGHT : CALL ENEMY_PORTAL_WRAP : RET Z
+    JP      RANDOM_TURN
+.edge_right:
+    XOR     A : CALL ENEMY_PORTAL_WRAP : RET Z
+    JP      RANDOM_TURN
 
 .maybe_turn:
     ; 8px alignment check — only turn when on a tile boundary
