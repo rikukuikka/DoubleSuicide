@@ -46,12 +46,13 @@ openmsx -machine C-BIOS_MSX1 -cart build/DoubleSuicide.rom -joytype1 keys
 - **Bullets** — one bullet per player, wall check at the center point, kills any enemy including the Wizard
 - **Enemy bullets** — speed derives from the current round (Robot/Tank bullets match the round's base-x2 value, the Wizard's are one step faster), don't cross into the HUD area
 - **Explosions** — 2-frame animation when an enemy is destroyed
-- **Music and sound effects** — Arkos Tracker 3 AKG player (ROM version, converted to sjasmplus), played at 60 Hz on both PAL and NTSC; the background song (made in Arkos Tracker) uses all three channels: melody on A, bass on B, drums on C; the shot effect plays on channel A, the explosion/death effect and the tank-hit clang on channel B, overriding the music on that channel while they play (see [Music and sound effects](#music-and-sound-effects))
+- **Music and sound effects** — Arkos Tracker 3 AKG player (ROM version, converted to sjasmplus), played at 60 Hz on both PAL and NTSC; the background song (made in Arkos Tracker) uses all three channels: melody on A, bass on B, drums on C; the shot effect plays on channel A, the explosion/death effect and the tank-hit clang on channel B, the power-up pickup on channel C, overriding the music on that channel while they play (see [Music and sound effects](#music-and-sound-effects))
 - **Player death** — enemy touch or a bullet kills, blinking animation, respawns at the starting position
 - **3 lives** per player, the game ends when lives = 0
 - **Game over screen** — a 144x52 px image loaded into bank 1, shown once all players have died; releasing the fire button returns to the title screen
 - **Wave system** — a new wave spawns once all enemies are destroyed, with a 1.5s delay in between
 - **HUD** — score (BCD, 100 per kill), lives, color-coded player icons and the radar on the bottom row
+- **Power-ups: shield** — a 16x8 icon made of two background tiles (45-46, a dark blue shield on a gold capsule; tiles get a color pair per pixel row, so they're more colorful than a sprite and don't count against the sprite-per-scanline limit). It appears 10 s into the game and then 8-16.5 s after the previous one was taken or vanished, at a random spot where both icon tiles and the two tiles above and below them are floor (in practice a vertical corridor), at least 32 px from the players; it stays 10 s, blinking for the last 2 s. Walking over it gives that player 8 s of shield: enemy contact does nothing and enemy/tank/Wizard bullets are absorbed (tank-hit clang); the player sprite flashes white, faster for the last 2 s. Timings are EQUs at the top of `powerup.asm`
 
 ## File structure
 
@@ -69,6 +70,7 @@ openmsx -machine C-BIOS_MSX1 -cart build/DoubleSuicide.rom -joytype1 keys
 | `enemy_ghost.asm` | Ghost: sprite data, spawning, row/column visibility, animated drawing |
 | `bullet.asm`    | Player bullets, collision with enemies, scoring              |
 | `boss.asm`      | Wizard boss: sprites, movement, teleport, shooting, its own bullet |
+| `powerup.asm`   | Power-ups (shield): tile icon, spawn spot search, pickup, shield timers and sprite flashing, DRAW_POWERUP |
 | `sound.asm`     | Sound interface (INIT_SOUND, UPDATE_SOUND, SFX_*, STOP_SOUND), includes the Arkos player (the song and effects are included by `main.asm`, in page 2) |
 | `hud.asm`       | Digit tiles, score, lives display, radar border tiles         |
 | `title.asm`     | Title screen, logo, 1P/2P selection                             |
@@ -140,9 +142,10 @@ its channel while it plays.
    |---|---|---|---|
    | 01 | Shot (`SFX_NUM_SHOOT`) | `SFX_SHOOT` | A |
    | 02 | Explosion / death (`SFX_NUM_EXPLOSION`) | `SFX_ENEMY_DIE` | B |
-   | 03 | Tank's first hit, metallic clang (`SFX_NUM_TANK_HIT`) | `SFX_TANK_HIT` | B |
+   | 03 | Tank's first hit, metallic clang; also a bullet absorbed by a shield (`SFX_NUM_TANK_HIT`) | `SFX_TANK_HIT` | B |
+   | 04 | Power-up picked up, rising arpeggio (`SFX_NUM_POWERUP`) | `SFX_POWERUP` | C |
 
-   **Export at least three effects**: the player doesn't check the index, so
+   **Export at least four effects**: the player doesn't check the index, so
    playing an effect missing from the table reads garbage (wrong sound or a
    crash). The *Found note* column is the note the effect is exported at.
 2. Same settings as for the song: **Source**, **Generate a configuration
@@ -243,6 +246,12 @@ instead of the same one staying invisible.
 | C0AF-C0B0     | PAL_ACTIVE, PAL_TICK_ACC | PAL detection and the extra-tick accumulator |
 | C0B1-C0B6     | ENEMY_HITS       | Hits taken per ENEMIES slot (Tank: 0 = intact, 1 = hurt), cleared in INIT_ENEMIES/SPAWN_WAVE and per slot in SPAWN_TANK |
 | C0B7          | SPR_ROTATE       | DRAW_ENEMIES's starting ENEMIES slot (0-5), advanced every frame for sprite flicker |
+| C0B8          | PWR_ACTIVE       | 1 = a power-up is on the field (`powerup.asm`) |
+| C0B9          | PWR_SHOWN        | 1 = its tiles are in the name table now (DRAW_POWERUP draws/erases on change) |
+| C0BA-C0BB     | PWR_TIMER        | Ticks until the next spawn, or the power-up's remaining lifetime |
+| C0BC-C0BD     | PWR_NAMEADDR     | Name table address of the power-up's left tile |
+| C0BE-C0BF     | PWR_X, PWR_Y     | Power-up pixel position |
+| C0C0-C0C3     | P1_SHIELD, P2_SHIELD | Shield ticks left per player (16-bit, 0 = no shield) |
 | C100-C3FF     | NAVMAP           | Junction point direction bitmap (768 bytes) |
 | C400-C5FF     | ARKOS_BUFFER     | Arkos ROM player variables (`PLY_AKG_ROM_Buffer`); the current song uses 152 bytes, the full player with sound effects at most 273; `sound.asm` ASSERTs it fits |
 

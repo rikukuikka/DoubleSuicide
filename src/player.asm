@@ -125,7 +125,8 @@ DRAW_P1:
     LD      A, B                                 ; base pattern (frame 1)
 .p1_pat:
     OUT     (VDP_DATA), A
-    LD      A, P1_COLOR : OUT (VDP_DATA), A
+    LD      HL, P1_SHIELD : LD C, P1_COLOR : CALL SHIELD_COLOR
+    OUT     (VDP_DATA), A
     RET
 
 ; DRAW_P2 — draw P2's sprite into VRAM
@@ -145,7 +146,8 @@ DRAW_P2:
     LD      A, B
 .p2_pat:
     OUT     (VDP_DATA), A
-    LD      A, P2_COLOR : OUT (VDP_DATA), A
+    LD      HL, P2_SHIELD : LD C, P2_COLOR : CALL SHIELD_COLOR
+    OUT     (VDP_DATA), A
     RET
 
 
@@ -353,6 +355,7 @@ DRAW_PLAYERS:
 ; =============================================================================
 ; CHECK_PLAYER_DEATH — check whether an enemy hits a player
 ; Centered hitboxes: player 6x6 + enemy 6x6 (each half 3)
+; A shielded player (P1_SHIELD/P2_SHIELD, powerup.asm) is not hurt.
 ; = threshold 6 (see bullet.asm's CHECK_BULLET_HIT for the same derivation)
 ; =============================================================================
 CHECK_PLAYER_DEATH:
@@ -360,11 +363,12 @@ CHECK_PLAYER_DEATH:
     LD      B, MAX_ENEMIES
 .loop:
     PUSH    BC
-    LD      A, (IX+4) : OR A : JR Z, .next    ; active?
+    LD      A, (IX+4) : OR A : JP Z, .next    ; active?
 
-    ; Check P1 (if alive and not in the death timer)
+    ; Check P1 (if alive, not in the death timer and not shielded)
     LD      A, (P1_DEAD_TMR) : OR A : JR NZ, .skip_p1
     LD      A, (P1_LIVES) : OR A : JR Z, .skip_p1
+    LD      A, (P1_SHIELD) : LD C, A : LD A, (P1_SHIELD+1) : OR C : JR NZ, .skip_p1
     ; X distance
     LD      A, (P1_X) : SUB (IX+0)
     JP      P, .p1xp
@@ -386,6 +390,7 @@ CHECK_PLAYER_DEATH:
     ; Check P2
     LD      A, (P2_DEAD_TMR) : OR A : JR NZ, .next
     LD      A, (P2_LIVES) : OR A : JR Z, .next
+    LD      A, (P2_SHIELD) : LD C, A : LD A, (P2_SHIELD+1) : OR C : JR NZ, .next
     LD      A, (P2_X) : SUB (IX+0)
     JP      P, .p2xp
     NEG

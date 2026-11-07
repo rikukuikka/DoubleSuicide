@@ -49,6 +49,7 @@ INIT:
     LD      A, 1 : LD (ROUND), A   ; round 1 (slowest speed tier)
     CALL    APPLY_ROUND_SPEEDS     ; compute CUR_* speeds before spawning enemies
     CALL    INIT_ENEMIES
+    CALL    INIT_POWERUPS          ; after INIT_ENEMIES: uses RAND
     CALL    INIT_BULLETS
     CALL    INIT_EXPLOSIONS
     XOR     A : LD (WAVE_TIMER), A
@@ -72,6 +73,7 @@ MAINLOOP:
 
     ; All VDP writes happen right after vblank
     CALL    DRAW_PLAYERS
+    CALL    DRAW_POWERUP          ; power-up tiles (name table), only when they change
     CALL    DRAW_ENEMIES
     CALL    DRAW_BULLETS
     CALL    DRAW_ENEMY_BULLETS
@@ -117,6 +119,7 @@ GAME_TICK:
 .wave_wait:
     ; Players move during the delay, enemies do not
     CALL    UPDATE_PLAYERS
+    CALL    UPDATE_POWERUPS
     CALL    UPDATE_BULLETS
     CALL    UPDATE_ENEMY_BULLETS
     CALL    UPDATE_TANK_BULLETS
@@ -128,6 +131,7 @@ GAME_TICK:
 .normal:
     ; Normal gameplay state
     CALL    UPDATE_PLAYERS
+    CALL    UPDATE_POWERUPS
     CALL    UPDATE_ENEMIES
     CALL    CHECK_PLAYER_DEATH
     CALL    CHECK_GAME_OVER
@@ -261,6 +265,7 @@ ENABLE_PAGE2:
     INCLUDE "src/enemy_ghost.asm"
     INCLUDE "src/bullet.asm"
     INCLUDE "src/boss.asm"
+    INCLUDE "src/powerup.asm"
     INCLUDE "src/hud.asm"
     INCLUDE "src/title.asm"
     INCLUDE "src/gameover.asm"

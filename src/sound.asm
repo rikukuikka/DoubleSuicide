@@ -12,9 +12,9 @@
 ;
 ; Channels: the music may use all three; a sound effect replaces the music on
 ; its channel while it plays. SFX_SHOOT plays on channel A, SFX_ENEMY_DIE and
-; SFX_TANK_HIT on channel B. The current song uses all three channels
-; (melody A, bass B, drums C), so the effects briefly replace the melody or
-; the bass. The PSG has one noise generator: an effect with noise also
+; SFX_TANK_HIT on channel B, SFX_POWERUP on channel C. The current song uses
+; all three channels (melody A, bass B, drums C), so the effects briefly
+; replace the melody, the bass or the drums. The PSG has one noise generator: an effect with noise also
 ; changes the drums' noise period while it plays.
 ;
 ; R7: PLY_AKG_HARDWARE_MSX makes the player keep R7 bit 7 = 1 (port B
@@ -28,6 +28,7 @@
 SFX_NUM_SHOOT       EQU 1
 SFX_NUM_EXPLOSION   EQU 2
 SFX_NUM_TANK_HIT    EQU 3
+SFX_NUM_POWERUP     EQU 4
 
 ; =============================================================================
 ; INIT_SOUND — silence the PSG, start the music from the beginning
@@ -76,6 +77,16 @@ SFX_TANK_HIT:
     PUSH    BC : PUSH DE : PUSH HL
     LD      A, SFX_NUM_TANK_HIT
     LD      C, 1                  ; channel B
+    JR      SFX_PLAY
+
+; =============================================================================
+; SFX_POWERUP — channel C (a power-up picked up)
+; Preserves BC, DE, HL (called from inside the callers' loops).
+; =============================================================================
+SFX_POWERUP:
+    PUSH    BC : PUSH DE : PUSH HL
+    LD      A, SFX_NUM_POWERUP
+    LD      C, 2                  ; channel C
     JR      SFX_PLAY
 
 ; =============================================================================

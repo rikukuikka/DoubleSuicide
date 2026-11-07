@@ -809,6 +809,7 @@ UPDATE_ENEMY_BULLET:
 ; Input: IX = bullet slot
 ; Centered hitboxes: bullet 4x4 (half 2) + player 6x6 (half 3)
 ; = threshold 5 (see bullet.asm's CHECK_BULLET_HIT for the same derivation)
+; A shielded player (P1_SHIELD/P2_SHIELD, powerup.asm) absorbs the bullet.
 CHECK_ENEMY_BULLET_PLAYER_HIT:
     PUSH    BC
     PUSH    DE
@@ -828,6 +829,8 @@ CHECK_ENEMY_BULLET_PLAYER_HIT:
 .p1y:
     CP      5 : JR NC, .chk_p2
     LD      (IX+3), 0
+    LD      A, (P1_SHIELD) : LD C, A : LD A, (P1_SHIELD+1) : OR C
+    JR      NZ, .absorbed
     LD      A, (P1_LIVES) : DEC A : LD (P1_LIVES), A
     LD      A, 1 : LD (HUD_DIRTY), A
     LD      A, 60 : LD (P1_DEAD_TMR), A
@@ -848,10 +851,15 @@ CHECK_ENEMY_BULLET_PLAYER_HIT:
 .p2y:
     CP      5 : JR NC, .ebph_done
     LD      (IX+3), 0
+    LD      A, (P2_SHIELD) : LD C, A : LD A, (P2_SHIELD+1) : OR C
+    JR      NZ, .absorbed
     LD      A, (P2_LIVES) : DEC A : LD (P2_LIVES), A
     LD      A, 1 : LD (HUD_DIRTY), A
     LD      A, 60 : LD (P2_DEAD_TMR), A
     CALL    SFX_ENEMY_DIE
+    JR      .ebph_done
+.absorbed:
+    CALL    SFX_TANK_HIT                ; the shield takes the hit: metallic clang
 .ebph_done:
     POP     DE
     POP     BC

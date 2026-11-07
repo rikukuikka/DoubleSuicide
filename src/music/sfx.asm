@@ -9,6 +9,7 @@ SoundEffects:
     dw SoundEffects_Shoot          ; Sound effect 1 (SFX_NUM_SHOOT).
     dw SoundEffects_Explosion      ; Sound effect 2 (SFX_NUM_EXPLOSION).
     dw SoundEffects_TankHit        ; Sound effect 3 (SFX_NUM_TANK_HIT).
+    dw SoundEffects_PowerUp        ; Sound effect 4 (SFX_NUM_POWERUP).
 
 ; Sound effect 1: shot. Tone, volume 13, period rising 62 -> 182 (pitch falls).
 SoundEffects_Shoot:
@@ -98,4 +99,42 @@ SoundEffects_TankHit:
     dw 90                          ; Software period.
     db 17                          ; Soft only. Volume: 4.
     dw 96                          ; Software period.
+    db 4                           ; End of the sound effect.
+
+; Sound effect 4: power-up picked up. A rising C major arpeggio over two
+; octaves (C5 E5 G5 C6 C6 E6 G6 C7), two ticks per note, fading 15 -> 5.
+SoundEffects_PowerUp:
+    db 0                           ; Speed.
+    db 61                         ; Soft only. Volume: 15.
+    dw 213                        ; Software period.
+    db 61                         ; Soft only. Volume: 15.
+    dw 213                        ; Software period.
+    db 57                         ; Soft only. Volume: 14.
+    dw 169                        ; Software period.
+    db 57                         ; Soft only. Volume: 14.
+    dw 169                        ; Software period.
+    db 53                         ; Soft only. Volume: 13.
+    dw 142                        ; Software period.
+    db 53                         ; Soft only. Volume: 13.
+    dw 142                        ; Software period.
+    db 49                         ; Soft only. Volume: 12.
+    dw 107                        ; Software period.
+    db 49                         ; Soft only. Volume: 12.
+    dw 107                        ; Software period.
+    db 45                         ; Soft only. Volume: 11.
+    dw 107                        ; Software period.
+    db 45                         ; Soft only. Volume: 11.
+    dw 107                        ; Software period.
+    db 41                         ; Soft only. Volume: 10.
+    dw 85                         ; Software period.
+    db 37                         ; Soft only. Volume: 9.
+    dw 85                         ; Software period.
+    db 33                         ; Soft only. Volume: 8.
+    dw 71                         ; Software period.
+    db 29                         ; Soft only. Volume: 7.
+    dw 71                         ; Software period.
+    db 25                         ; Soft only. Volume: 6.
+    dw 53                         ; Software period.
+    db 21                         ; Soft only. Volume: 5.
+    dw 53                         ; Software period.
     db 4                           ; End of the sound effect.
