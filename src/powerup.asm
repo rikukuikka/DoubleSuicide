@@ -1,19 +1,20 @@
 ; =============================================================================
 ; powerup.asm — Power-ups (currently: the shield)
 ; =============================================================================
-; A power-up is drawn with two side-by-side 8x8 background tiles (16x8 px),
-; not with a sprite: in Screen 2 every pixel row of a tile has its own
-; foreground/background color pair, so the icon can be far more colorful
-; than a one-color sprite, and it never counts against the 4-sprites-per-
-; scanline limit (README gotcha 17).
+; A power-up is drawn with a 2x2 block of 8x8 background tiles (16x16 px,
+; the size of a corridor and of the sprites), not with a sprite: in Screen 2
+; every pixel row of a tile has its own foreground/background color pair, so
+; the icon can be far more colorful than a one-color sprite, and it never
+; counts against the 4-sprites-per-scanline limit (README gotcha 17).
 ;
 ; The tiles are only drawn in the name table; collision (IS_WALL) reads the
 ; MAZE data in ROM, so a power-up never blocks anything.
 ;
-; Placement: a random spot where both power-up tiles AND the two tiles
-; directly above and below them are floor in MAZE — in practice a vertical
-; corridor (or an open area), where a player walking along the corridor
-; covers the icon completely. Not within PWR_MIN_PLAYER_DIST of a player.
+; Placement: a random tile-aligned spot where all four tiles of the 2x2
+; block are floor in MAZE (columns 1-29, rows 1-19, so never in a portal
+; opening). Corridors are two tiles wide, so the icon fills the corridor
+; and a player walking along it covers the icon exactly. Not within
+; PWR_MIN_PLAYER_DIST of a player.
 ;
 ; Life cycle (PWR_TIMER counts logic ticks, 60 per second):
 ;   not on the field: PWR_TIMER counts down the delay to the next spawn;
@@ -34,8 +35,10 @@
 ; be visible with what is in the name table (PWR_SHOWN).
 
 ; Tile numbers (after the radar border tiles 41-44, hud.asm)
-PWR_TILE_L          EQU 45
-PWR_TILE_R          EQU 46
+PWR_TILE_TL         EQU 45      ; top-left
+PWR_TILE_TR         EQU 46      ; top-right
+PWR_TILE_BL         EQU 47      ; bottom-left
+PWR_TILE_BR         EQU 48      ; bottom-right
 
 ; Timings in logic ticks (60/s on both PAL and NTSC)
 PWR_FIRST_DELAY     EQU 600     ; first shield 10 s after the game starts
@@ -53,27 +56,33 @@ PWR_SPAWN_TRIES     EQU 8       ; random spots tried per tick
 PWR_ACTIVE      EQU 0xC0B8      ; 1 = a power-up is on the field (can be picked up)
 PWR_SHOWN       EQU 0xC0B9      ; 1 = its tiles are in the name table right now
 PWR_TIMER       EQU 0xC0BA      ; 2 bytes: spawn delay / remaining lifetime
-PWR_NAMEADDR    EQU 0xC0BC      ; 2 bytes: VRAM name table address of the left tile
-PWR_X           EQU 0xC0BE      ; pixel X of the left tile
+PWR_NAMEADDR    EQU 0xC0BC      ; 2 bytes: VRAM name table address of the top-left tile
+PWR_X           EQU 0xC0BE      ; pixel X of the top-left corner
 PWR_Y           EQU 0xC0BF      ; pixel Y
 P1_SHIELD       EQU 0xC0C0      ; 2 bytes: shield ticks left (0 = no shield)
 P2_SHIELD       EQU 0xC0C2      ; 2 bytes
 
-; Shield icon, 16x8 px: a dark blue heraldic shield on a gold capsule.
-; Columns 0-7 = left tile, 8-15 = right tile. Rows 0 and 7 are the capsule's
-; rounded top/bottom (gold/red on black); on rows 1-6 the background color
-; is the capsule's shading and the foreground the dark blue shield.
-PWR_SHIELD_PAT_L:
-    DB $7F,$0F,$0F,$0F,$07,$03,$01,$7F
-PWR_SHIELD_PAT_R:
-    DB $FE,$F0,$F0,$F0,$E0,$C0,$80,$FE
-PWR_SHIELD_COL:                     ; same colors for both tiles
-    DB $B1                          ; row 0: light yellow on black
-    DB $4B,$4B                      ; rows 1-2: dark blue on light yellow
-    DB $4A,$4A                      ; rows 3-4: dark blue on dark yellow
-    DB $49                          ; row 5: dark blue on light red
-    DB $48                          ; row 6: dark blue on medium red
-    DB $61                          ; row 7: dark red on black
+; Shield icon, 16x16 px: a heraldic shield with a gold top edge, the left
+; half white with a red cross arm and the right half red with a white one.
+; On rows 2-9 the shield fills the whole 16 px, so the background color is
+; the field and the foreground the cross; on the rounded top (rows 0-1) and
+; the narrowing bottom (rows 10-15) the shield is the foreground on black.
+; Data order = tile order 45-48: TL, TR, BL, BR (8 bytes each).
+PWR_SHIELD_PATS:
+    DB $3F,$7F,$00,$01,$01,$0F,$0F,$01  ; TL rows 0-7
+    DB $FC,$FE,$00,$80,$80,$F0,$F0,$80  ; TR rows 0-7
+    DB $01,$01,$7F,$7F,$3F,$1F,$07,$01  ; BL rows 8-15
+    DB $80,$80,$FE,$FE,$FC,$F8,$E0,$80  ; BR rows 8-15
+PWR_SHIELD_COLS:
+    ; TL: light/dark yellow top edge, then red cross on white
+    DB $B1,$A1,$8F,$8F,$8F,$8F,$8F,$8F
+    ; TR: same top edge, then white cross on medium red
+    DB $B1,$A1,$F8,$F8,$F8,$F8,$F8,$F8
+    ; BL: red on white for rows 8-9, then white / gray tip on black
+    DB $8F,$8F,$F1,$F1,$F1,$E1,$E1,$E1
+    ; BR: white on red for rows 8-9, then medium / dark red tip on black
+    DB $F8,$F8,$81,$81,$81,$61,$61,$61
+PWR_SHIELD_END:
 
 ; =============================================================================
 ; INIT_POWERUPS — load the tiles into all three banks and reset the state.
@@ -96,22 +105,14 @@ INIT_POWERUPS:
 
 ; HL = pattern table base of one bank; the color table is 0x2000 higher
 .load_bank:
+    LD      DE, PWR_TILE_TL*8 : ADD HL, DE
     PUSH    HL
-    LD      DE, PWR_TILE_L*8 : ADD HL, DE
-    PUSH    HL
-    LD      DE, PWR_SHIELD_PAT_L : LD BC, 16    ; L and R patterns are adjacent
+    LD      DE, PWR_SHIELD_PATS : LD BC, PWR_SHIELD_COLS - PWR_SHIELD_PATS
     CALL    VDP_WRITE_BLOCK
     POP     HL
-    LD      DE, 0x2000 : ADD HL, DE             ; color table, tile 45
-    PUSH    HL
-    LD      DE, PWR_SHIELD_COL : LD BC, 8
-    CALL    VDP_WRITE_BLOCK
-    POP     HL
-    LD      DE, 8 : ADD HL, DE                  ; tile 46
-    LD      DE, PWR_SHIELD_COL : LD BC, 8
-    CALL    VDP_WRITE_BLOCK
-    POP     HL
-    RET
+    LD      DE, 0x2000 : ADD HL, DE             ; color table, same tiles
+    LD      DE, PWR_SHIELD_COLS : LD BC, PWR_SHIELD_END - PWR_SHIELD_COLS
+    JP      VDP_WRITE_BLOCK
 
 ; =============================================================================
 ; UPDATE_POWERUPS — one logic tick: shield timers, spawning, pickup, expiry
@@ -171,9 +172,9 @@ PWR_REMOVE:
     RET
 
 ; PWR_TOUCHES — does a player at B=X, C=Y (sprite top-left) touch the icon?
-; The player's 16x16 box center (X+8, Y+8) against the icon's 16x8 center
-; (PWR_X+8, PWR_Y+4): both distances must be under 8 px, so the player has
-; to be mostly on top of the icon. Output: Z = touches.
+; Both are 16x16 boxes: the distances between their top-left corners must
+; be under 8 px on both axes, so the player has to be mostly on top of the
+; icon. Output: Z = touches.
 PWR_TOUCHES:
     LD      A, (PWR_X) : LD D, A
     LD      A, B : SUB D                ; X distance (|dx| <= 248, see below)
@@ -182,7 +183,7 @@ PWR_TOUCHES:
 .xp:
     CP      8 : JR NC, .no
     LD      A, (PWR_Y) : LD D, A
-    LD      A, C : ADD A, 4 : SUB D     ; (Y+8) - (PWR_Y+4)
+    LD      A, C : SUB D                ; Y distance
     JP      P, .yp
     NEG
 .yp:
@@ -198,8 +199,8 @@ PWR_TOUCHES:
 ; =============================================================================
 ; PWR_PICK_SPOT — try PWR_SPAWN_TRIES random spots for the power-up.
 ; A spot is column c (1-29) and row r (1-19) where MAZE has floor at
-; (c,r) (c+1,r), (c,r-1) (c+1,r-1) and (c,r+1) (c+1,r+1), and which is at
-; least PWR_MIN_PLAYER_DIST px away from both players on some axis.
+; (c,r) (c+1,r) (c,r+1) (c+1,r+1), and which is at least
+; PWR_MIN_PLAYER_DIST px away from both players on some axis.
 ; Output: Z = found (PWR_X, PWR_Y, PWR_NAMEADDR set), NZ = not found.
 ; =============================================================================
 PWR_PICK_SPOT:
@@ -222,12 +223,9 @@ PWR_PICK_SPOT:
     LD      A, L : OR C : LD L, A       ; column < 32, low 5 bits were 0
     PUSH    HL
     LD      DE, MAZE : ADD HL, DE
-    LD      A, (HL) : INC HL : OR (HL)  ; the icon's own two tiles
+    LD      A, (HL) : INC HL : OR (HL)  ; top row of the 2x2 block
     JR      NZ, .fail_pop
-    LD      DE, -33 : ADD HL, DE        ; (c, r-1)
-    LD      A, (HL) : INC HL : OR (HL)
-    JR      NZ, .fail_pop
-    LD      DE, 63 : ADD HL, DE         ; (c, r+1)
+    LD      DE, 31 : ADD HL, DE         ; (c, r+1)
     LD      A, (HL) : INC HL : OR (HL)
     JR      NZ, .fail_pop
     ; Pixel coordinates: D = X, E = Y
@@ -293,15 +291,25 @@ DRAW_POWERUP:
 .want:
     LD      A, (PWR_SHOWN) : CP B : RET Z
     LD      A, B : LD (PWR_SHOWN), A
+    ; Tiles to write: D = top-left (top-right = D+1, bottom = D+2/D+3), 0 = floor
+    LD      D, 0
+    LD      A, B : OR A : JR Z, .write
+    LD      D, PWR_TILE_TL
+.write:
     LD      HL, (PWR_NAMEADDR) : CALL VDP_SETW
-    LD      A, B : OR A : JR Z, .erase
-    LD      A, PWR_TILE_L : OUT (VDP_DATA), A
+    CALL    .pair
+    LD      A, L : ADD A, 32 : LD L, A          ; next name table row
+    LD      A, H : ADC A, 0 : LD H, A
+    CALL    VDP_SETW
+    LD      A, D : OR A : JR Z, .pair           ; erasing: floor again
+    LD      D, PWR_TILE_BL
+; .pair — write tile D and the next one (both 0 when D = 0)
+.pair:
+    LD      A, D : OUT (VDP_DATA), A
     CALL    VDP_DLY
-    LD      A, PWR_TILE_R : OUT (VDP_DATA), A
-    RET
-.erase:
-    OUT     (VDP_DATA), A                       ; A = 0 = floor tile
-    CALL    VDP_DLY
+    OR      A : JR Z, .p0
+    INC     A
+.p0:
     OUT     (VDP_DATA), A
     RET
 

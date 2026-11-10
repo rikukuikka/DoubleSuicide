@@ -11,7 +11,7 @@
 
 ; Tile numbers (DIGIT_PATS is loaded starting at tile 2)
 ; 10 digits (2-11) + 2 icons (12-13) + 26 letters (14-39) + 1 door (40)
-; + radar border (41-44). Tiles 45-46 are the power-up icon (powerup.asm).
+; + radar border (41-44). Tiles 45-48 are the 2x2 power-up icon (powerup.asm).
 OVI_TILE    EQU 40
 
 ; RAM
