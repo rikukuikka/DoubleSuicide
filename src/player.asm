@@ -355,7 +355,7 @@ DRAW_PLAYERS:
 ; =============================================================================
 ; CHECK_PLAYER_DEATH — check whether an enemy hits a player
 ; Centered hitboxes: player 6x6 + enemy 6x6 (each half 3)
-; A shielded player (P1_SHIELD/P2_SHIELD, powerup.asm) is not hurt.
+; A shielded player is not hurt; the first contact breaks the shield (SHIELD_HIT, powerup.asm).
 ; = threshold 6 (see bullet.asm's CHECK_BULLET_HIT for the same derivation)
 ; =============================================================================
 CHECK_PLAYER_DEATH:
@@ -368,7 +368,7 @@ CHECK_PLAYER_DEATH:
     ; Check P1 (if alive, not in the death timer and not shielded)
     LD      A, (P1_DEAD_TMR) : OR A : JR NZ, .skip_p1
     LD      A, (P1_LIVES) : OR A : JR Z, .skip_p1
-    LD      A, (P1_SHIELD) : LD C, A : LD A, (P1_SHIELD+1) : OR C : JR NZ, .skip_p1
+    LD      HL, P1_SHIELD : CALL SHIELD_HIT : JR NZ, .skip_p1
     ; X distance
     LD      A, (P1_X) : SUB (IX+0)
     JP      P, .p1xp
@@ -390,7 +390,7 @@ CHECK_PLAYER_DEATH:
     ; Check P2
     LD      A, (P2_DEAD_TMR) : OR A : JR NZ, .next
     LD      A, (P2_LIVES) : OR A : JR Z, .next
-    LD      A, (P2_SHIELD) : LD C, A : LD A, (P2_SHIELD+1) : OR C : JR NZ, .next
+    LD      HL, P2_SHIELD : CALL SHIELD_HIT : JR NZ, .next
     LD      A, (P2_X) : SUB (IX+0)
     JP      P, .p2xp
     NEG

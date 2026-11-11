@@ -52,7 +52,7 @@ openmsx -machine C-BIOS_MSX1 -cart build/DoubleSuicide.rom -joytype1 keys
 - **Game over screen** — a 144x52 px image loaded into bank 1, shown once all players have died; releasing the fire button returns to the title screen
 - **Wave system** — a new wave spawns once all enemies are destroyed, with a 1.5s delay in between
 - **HUD** — score (BCD, 100 per kill), lives, color-coded player icons and the radar on the bottom row
-- **Power-ups: shield** — a 16x16 icon made of a 2x2 block of background tiles (45-48: a heraldic shield with a gold top edge, a white half with a red cross arm and a red half with a white one; tiles get a color pair per pixel row, so they're more colorful than a sprite and don't count against the sprite-per-scanline limit). It appears 10 s into the game and then 8-16.5 s after the previous one was taken or vanished, at a random tile-aligned spot where all four tiles are floor (it fills a 2-tile corridor, so a player walking along it covers it exactly; never in a portal opening), at least 32 px from the players; it stays 10 s, blinking for the last 2 s. Walking over it gives that player 8 s of shield: enemy contact does nothing and enemy/tank/Wizard bullets are absorbed (tank-hit clang); the player sprite flashes white, faster for the last 2 s. Timings are EQUs at the top of `powerup.asm`
+- **Power-ups: shield** — a 16x16 icon made of a 2x2 block of background tiles (45-48: a heraldic shield with a gold top edge, a white half with a red cross arm and a red half with a white one; tiles get a color pair per pixel row, so they're more colorful than a sprite and don't count against the sprite-per-scanline limit). It appears 10 s into the game and then 8-16.5 s after the previous one was taken or vanished, at a random tile-aligned spot where all four tiles are floor (it fills a 2-tile corridor, so a player walking along it covers it exactly; never in a portal opening), at least 32 px from the players; it stays 10 s, blinking for the last 2 s. Walking over it gives that player a shield that stays on until something hits them: the first enemy contact or enemy/tank/Wizard bullet is absorbed (tank-hit clang), after which the shield still protects for 2 s and then disappears. The player sprite flashes white slowly while the shield is on and fast during those last 2 s. Timings are EQUs at the top of `powerup.asm`
 
 ## File structure
 
@@ -142,7 +142,7 @@ its channel while it plays.
    |---|---|---|---|
    | 01 | Shot (`SFX_NUM_SHOOT`) | `SFX_SHOOT` | A |
    | 02 | Explosion / death (`SFX_NUM_EXPLOSION`) | `SFX_ENEMY_DIE` | B |
-   | 03 | Tank's first hit, metallic clang; also a bullet absorbed by a shield (`SFX_NUM_TANK_HIT`) | `SFX_TANK_HIT` | B |
+   | 03 | Tank's first hit, metallic clang; also a hit that breaks a shield (`SFX_NUM_TANK_HIT`) | `SFX_TANK_HIT` | B |
    | 04 | Power-up picked up, rising arpeggio (`SFX_NUM_POWERUP`) | `SFX_POWERUP` | C |
 
    **Export at least four effects**: the player doesn't check the index, so
@@ -251,7 +251,7 @@ instead of the same one staying invisible.
 | C0BA-C0BB     | PWR_TIMER        | Ticks until the next spawn, or the power-up's remaining lifetime |
 | C0BC-C0BD     | PWR_NAMEADDR     | Name table address of the power-up's top-left tile |
 | C0BE-C0BF     | PWR_X, PWR_Y     | Power-up pixel position (top-left corner) |
-| C0C0-C0C3     | P1_SHIELD, P2_SHIELD | Shield ticks left per player (16-bit, 0 = no shield) |
+| C0C0-C0C1     | P1_SHIELD, P2_SHIELD | Shield per player: 0 = none, 0xFF = on until hit, 1-120 = hit, ticks until it's gone |
 | C100-C3FF     | NAVMAP           | Junction point direction bitmap (768 bytes) |
 | C400-C5FF     | ARKOS_BUFFER     | Arkos ROM player variables (`PLY_AKG_ROM_Buffer`); the current song uses 152 bytes, the full player with sound effects at most 273; `sound.asm` ASSERTs it fits |
 

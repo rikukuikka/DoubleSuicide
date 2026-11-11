@@ -21,14 +21,16 @@
 ;                     at 0 a spot is searched every tick until one is found
 ;   on the field:     PWR_TIMER counts down its lifetime; the icon blinks
 ;                     for the last PWR_BLINK_TIME ticks and then disappears
-;   picked up:        the player gets SHIELD_TIME ticks of shield and a new
+;   picked up:        the player's shield is set to SHIELD_ON and a new
 ;                     spawn delay starts
 ;
-; Shield: while P1_SHIELD/P2_SHIELD is nonzero, enemy contact does nothing
-; (CHECK_PLAYER_DEATH, player.asm) and enemy/tank/Wizard bullets are
-; absorbed (CHECK_ENEMY_BULLET_PLAYER_HIT, enemy.asm). The player sprite
-; flashes white (SHIELD_SPRITE_COLOR), faster during the last
-; SHIELD_WARN_TIME ticks.
+; Shield: SHIELD_ON stays on, with no time limit, until the player is hit.
+; The first enemy contact (CHECK_PLAYER_DEATH, player.asm) or enemy/tank/
+; Wizard bullet (CHECK_ENEMY_BULLET_PLAYER_HIT, enemy.asm) is absorbed and
+; starts SHIELD_BREAK_TIME (SHIELD_HIT): for those 2 s the shield still
+; protects, then it is gone. The player sprite flashes white
+; (SHIELD_SPRITE_COLOR): slowly while the shield is on, fast while it breaks.
+; Picking up another shield restores SHIELD_ON.
 ;
 ; VDP writes happen only in DRAW_POWERUP (start of MAINLOOP): the logic
 ; only changes PWR_ACTIVE/PWR_TIMER, and DRAW_POWERUP compares what should
@@ -45,8 +47,8 @@ PWR_FIRST_DELAY     EQU 600     ; first shield 10 s after the game starts
 PWR_DELAY_MIN       EQU 480     ; next one 8 s + RAND*2 ticks (8-16.5 s) later
 PWR_LIFETIME        EQU 600     ; stays 10 s on the field
 PWR_BLINK_TIME      EQU 120     ; ...blinking for the last 2 s
-SHIELD_TIME         EQU 480     ; shield lasts 8 s
-SHIELD_WARN_TIME    EQU 120     ; faster flashing for the last 2 s
+SHIELD_ON           EQU 0xFF    ; P1_SHIELD/P2_SHIELD: shield on, waits for a hit
+SHIELD_BREAK_TIME   EQU 120     ; after a hit: still protects, flashes fast 2 s, then gone
 SHIELD_SPRITE_COLOR EQU 15      ; white
 
 PWR_MIN_PLAYER_DIST EQU 32      ; px, no spawning this close to a player
@@ -59,8 +61,8 @@ PWR_TIMER       EQU 0xC0BA      ; 2 bytes: spawn delay / remaining lifetime
 PWR_NAMEADDR    EQU 0xC0BC      ; 2 bytes: VRAM name table address of the top-left tile
 PWR_X           EQU 0xC0BE      ; pixel X of the top-left corner
 PWR_Y           EQU 0xC0BF      ; pixel Y
-P1_SHIELD       EQU 0xC0C0      ; 2 bytes: shield ticks left (0 = no shield)
-P2_SHIELD       EQU 0xC0C2      ; 2 bytes
+P1_SHIELD       EQU 0xC0C0      ; 0 = no shield, SHIELD_ON = on, 1-SHIELD_BREAK_TIME =
+P2_SHIELD       EQU 0xC0C1      ;   hit, ticks left until it's gone (still protects)
 
 ; Shield icon, 16x16 px: a heraldic shield with a gold top edge, the left
 ; half white with a red cross arm and the right half red with a white one.
@@ -96,9 +98,8 @@ INIT_POWERUPS:
     XOR     A
     LD      (PWR_ACTIVE), A
     LD      (PWR_SHOWN), A
-    LD      HL, 0
-    LD      (P1_SHIELD), HL
-    LD      (P2_SHIELD), HL
+    LD      (P1_SHIELD), A
+    LD      (P2_SHIELD), A
     LD      HL, PWR_FIRST_DELAY
     LD      (PWR_TIMER), HL
     RET
@@ -118,13 +119,9 @@ INIT_POWERUPS:
 ; UPDATE_POWERUPS — one logic tick: shield timers, spawning, pickup, expiry
 ; =============================================================================
 UPDATE_POWERUPS:
-    ; Shield timers
-    LD      HL, (P1_SHIELD) : LD A, H : OR L : JR Z, .s1
-    DEC     HL : LD (P1_SHIELD), HL
-.s1:
-    LD      HL, (P2_SHIELD) : LD A, H : OR L : JR Z, .s2
-    DEC     HL : LD (P2_SHIELD), HL
-.s2:
+    ; Shield break timers (SHIELD_ON doesn't count down)
+    LD      HL, P1_SHIELD : CALL SHIELD_TICK
+    LD      HL, P2_SHIELD : CALL SHIELD_TICK
     LD      A, (PWR_ACTIVE) : OR A : JR NZ, .on_field
 
     ; --- Nothing on the field: spawn delay ---
@@ -149,7 +146,7 @@ UPDATE_POWERUPS:
     LD      A, (P1_X) : LD B, A
     LD      A, (P1_Y) : LD C, A
     CALL    PWR_TOUCHES : JR NZ, .p2
-    LD      HL, SHIELD_TIME : LD (P1_SHIELD), HL
+    LD      A, SHIELD_ON : LD (P1_SHIELD), A
     JR      .picked
 .p2:
     LD      A, (P2_DEAD_TMR) : OR A : RET NZ
@@ -157,10 +154,11 @@ UPDATE_POWERUPS:
     LD      A, (P2_X) : LD B, A
     LD      A, (P2_Y) : LD C, A
     CALL    PWR_TOUCHES : RET NZ
-    LD      HL, SHIELD_TIME : LD (P2_SHIELD), HL
+    LD      A, SHIELD_ON : LD (P2_SHIELD), A
 .picked:
     CALL    SFX_POWERUP
     ; fall through
+
 ; PWR_REMOVE — take the power-up off the field and start a new spawn delay
 ; (DRAW_POWERUP erases the tiles on the next frame)
 PWR_REMOVE:
@@ -169,6 +167,13 @@ PWR_REMOVE:
     LD      L, A : LD H, 0 : ADD HL, HL         ; 0-510
     LD      DE, PWR_DELAY_MIN : ADD HL, DE
     LD      (PWR_TIMER), HL
+    RET
+
+; SHIELD_TICK — HL = P1_SHIELD/P2_SHIELD: count a broken shield down
+SHIELD_TICK:
+    LD      A, (HL) : OR A : RET Z              ; no shield
+    INC     A : RET Z                           ; SHIELD_ON: waits for a hit
+    DEC     (HL)
     RET
 
 ; PWR_TOUCHES — does a player at B=X, C=Y (sprite top-left) touch the icon?
@@ -315,23 +320,37 @@ DRAW_POWERUP:
 
 ; =============================================================================
 ; SHIELD_COLOR — sprite color for a player: A = C (the player's own color)
-; without a shield, otherwise flashing between C and SHIELD_SPRITE_COLOR
-; (faster for the last SHIELD_WARN_TIME ticks).
-; Input: HL = P1_SHIELD / P2_SHIELD, C = own color. Clobbers HL.
+; without a shield; with SHIELD_ON it flashes slowly between C and
+; SHIELD_SPRITE_COLOR, and fast while a hit shield runs out.
+; Input: HL = P1_SHIELD / P2_SHIELD, C = own color.
 ; =============================================================================
 SHIELD_COLOR:
-    LD      A, (HL) : INC HL : OR (HL)
-    JR      Z, .own
-    LD      A, (HL) : OR A : JR NZ, .slow       ; >= 256 ticks left
-    DEC     HL : LD A, (HL)
-    CP      SHIELD_WARN_TIME : JR NC, .slow
+    LD      A, (HL) : OR A : JR Z, .own
+    INC     A : JR Z, .slow                     ; SHIELD_ON
     LD      A, (FRAME_CTR) : AND 2 : JR .pick
 .slow:
-    LD      A, (FRAME_CTR) : AND 4
+    LD      A, (FRAME_CTR) : AND 8
 .pick:
     JR      Z, .own
     LD      A, SHIELD_SPRITE_COLOR
     RET
 .own:
     LD      A, C
+    RET
+
+; =============================================================================
+; SHIELD_HIT — an enemy or a bullet hits a player; does the shield protect?
+; Input: HL = P1_SHIELD / P2_SHIELD.
+; Output: Z = no shield (the player gets hurt), NZ = protected. The first
+; hit on a SHIELD_ON shield starts SHIELD_BREAK_TIME (with the metallic
+; clang); while that runs, further hits do nothing.
+; Preserves BC, DE, HL.
+; =============================================================================
+SHIELD_HIT:
+    LD      A, (HL) : OR A : RET Z
+    INC     A : JR NZ, .prot                    ; already breaking
+    LD      (HL), SHIELD_BREAK_TIME
+    CALL    SFX_TANK_HIT
+.prot:
+    OR      1
     RET
